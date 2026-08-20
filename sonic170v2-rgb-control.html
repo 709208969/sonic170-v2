@@ -149,7 +149,7 @@
   /* ── Language Toggle ─────────────────────────────────────────── */
   .lang-toggle {
     display: flex;
-    gap: 2px;
+    gap: 4px;
     background: var(--glass-2);
     border: 1px solid var(--edge-1);
     border-radius: 20px;
@@ -474,14 +474,16 @@
     box-shadow: var(--shadow-raised);
   }
 
-  /* ── Toolbar（v37：grid 双行 4 列——上下行按钮逐列左对齐） ───────────── */
+  /* ── Toolbar（v47.23：flex 双行——spacer 撑开余量，按钮自动换行防英文溢出） ─ */
   .toolbar {
-    display: grid;
-    grid-template-columns: repeat(4, max-content) minmax(0, 1fr) max-content;
+    display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     margin-bottom: 22px;
     align-items: center;
   }
+  .toolbar .spacer { flex: 1; }
+  .toolbar button { padding: 7px 12px; }
 
   select,
   button,
@@ -1003,7 +1005,7 @@
   /* ── 主题切换器（通用新增样式，不依赖 data-theme） ─────────────── */
   .theme-toggle {
     display: flex;
-    gap: 2px;
+    gap: 4px;
     background: var(--glass-2);
     border: 1px solid var(--edge-1);
     border-radius: 20px;
