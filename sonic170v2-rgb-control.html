@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LED Panel Pattern Designer — sonic170 (v47.20)</title>
+<title>LED Panel Pattern Designer — sonic170 (v47.21)</title>
 <style>
   /* ================================================================
      Glassmorphism Design System — "Frosted Glass + Dark Gradient"
@@ -1289,7 +1289,7 @@
     <div class="header-text">
       <h1 data-i18n="title">SONIC-170 v2灯光编辑器</h1>
       <div class="app-subtitle" data-i18n="subtitle">powered by kindlestar</div>
-      <div class="app-subtitle" id="appVersionBadge" style="font-size:.7rem;opacity:.75">v47.20</div>
+      <div class="app-subtitle" id="appVersionBadge" style="font-size:.7rem;opacity:.75">v47.21</div>
     </div>
     <div class="theme-toggle" role="group" aria-label="Theme">
       <button type="button" data-theme-btn="dawn" data-i18n="themeDawn" title="">
@@ -6253,7 +6253,7 @@ function switchTab(tabName) {
 // ---- i18n dictionary ----
 const I18N = {
   en: {
-    title:'SONIC-170 v2灯光编辑器',
+    title:'SONIC-170 v2 Lighting Editor',
     subtitle:'powered by kindlestar',
     callout:'<b>Before you start</b> — this page talks to your keyboard via <b>WebHID</b> (the same tech VIA uses). It only works in a <b>Chromium browser</b> (Chrome / Edge), running as a real page — save this file and open it directly. Close <b>VIA</b> first if it\'s running, so it doesn\'t hold the connection. All drawing and settings write to the keyboard in real time — connect first, then edits apply automatically. For support contact KEVIN on Discord: kindlestarkevin.',
     slot1:'Custom Pattern 1', slot2:'Custom Pattern 2', slot3:'Custom Pattern 3', slot4:'Custom Pattern 4', slot5:'Custom Pattern 5',
@@ -6807,6 +6807,10 @@ function switchLang(lang) {
     if (el.dataset.i18nTitle) el.title = t(el.dataset.i18nTitle);
   });
   populateModeSelects();
+  // v47.21: 语言切换刷新动态 UI——图案下拉/hint 由 t() 生成，不刷新会残留上一语言文本
+  renderPadPatternOptions();
+  renderAnimSlotSel();
+  syncPadPatternLink();
   updateStatusAfterLangSwitch();
 }
 
