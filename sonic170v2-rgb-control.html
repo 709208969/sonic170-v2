@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LED Panel Pattern Designer — sonic170 (v47.21)</title>
+<title>LED Panel Pattern Designer — sonic170 (v47.22)</title>
 <style>
   /* ================================================================
      Glassmorphism Design System — "Frosted Glass + Dark Gradient"
@@ -1289,7 +1289,7 @@
     <div class="header-text">
       <h1 data-i18n="title">SONIC-170 v2灯光编辑器</h1>
       <div class="app-subtitle" data-i18n="subtitle">powered by kindlestar</div>
-      <div class="app-subtitle" id="appVersionBadge" style="font-size:.7rem;opacity:.75">v47.21</div>
+      <div class="app-subtitle" id="appVersionBadge" style="font-size:.7rem;opacity:.75">v47.22</div>
     </div>
     <div class="theme-toggle" role="group" aria-label="Theme">
       <button type="button" data-theme-btn="dawn" data-i18n="themeDawn" title="">
@@ -4040,52 +4040,87 @@ function bindDfuEvents() {
       dfuStatusMsg(t('dfuDownloaded'));
     } catch (e) { dfuStatusMsg(t('dfuFail') + ': ' + e.message); }
   });
-  // v47.20: GitHub 一键更新——从仓库 latest release 拉取固件/json 资产下载
-  // 仓库名输入框（localStorage 记忆）；release 资产按文件名匹配固件 bin + via json
+  // v47.22: 一键更新——双源自动探测(GitHub release / Gitee raw,谁快用谁)+ 后台预下载缓存,点击即下
+  const DEFAULT_REPO = '709208969/sonic170-v2';
+  const GITEE_REPO = 'kevinxu93/sonic170-v2';
+  const EMBED_FW_VERSION = '4.8.1';
   const GH_REPO_KEY = 'sonic170_gh_repo';
   const ghRepoInput = document.getElementById('ghRepoInput');
   const savedRepo = localStorage.getItem(GH_REPO_KEY);
-  if (savedRepo) ghRepoInput.value = savedRepo;
+  ghRepoInput.value = savedRepo || DEFAULT_REPO;
   const ghAssetsEl = document.getElementById('ghAssets');
   const ghOut = document.getElementById('ghOut');
   const ghLog = (m) => { if (ghOut) ghOut.textContent = m; };
+  const dlCache = new Map(); // url -> Blob(预下载缓存)
+  const fetchT = (url, ms) => new Promise((res, rej) => {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), ms);
+    fetch(url, { signal: ctrl.signal, headers: { 'Accept': 'application/json' } })
+      .then(r => { clearTimeout(t); res(r); }, e => { clearTimeout(t); rej(e); });
+  });
+  const assetBtn = (name, url) => {
+    const btn = document.createElement('button');
+    btn.textContent = name;
+    btn.onclick = () => {
+      const b = dlCache.get(url);
+      if (b) { // 已预缓存:从内存秒出
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(b);
+        a.download = name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+        return;
+      }
+      // 未缓存(网络/CORS 受限):直链新窗口兜底
+      const a = document.createElement('a');
+      a.href = url; a.download = name; a.target = '_blank'; a.rel = 'noopener'; a.click();
+    };
+    return btn;
+  };
+  const preloadAll = async (items) => {
+    let ok = 0;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      ghLog(t('ghPreload') + ' (' + (i + 1) + '/' + items.length + ') ' + it.name);
+      try {
+        const r = await fetchT(it.url, 15000);
+        if (r.ok) { dlCache.set(it.url, await r.blob()); ok++; }
+      } catch (e) { /* 单资产失败不中断,降级直链 */ }
+    }
+    ghLog(t('ghPreloaded') + ' ' + ok + '/' + items.length);
+  };
   document.getElementById('ghCheckBtn').addEventListener('click', async () => {
-    const repo = ghRepoInput.value.trim();
-    if (!repo || repo.indexOf('/') < 0) { ghLog(t('ghBadRepo')); return; }
+    const repo = ghRepoInput.value.trim() || DEFAULT_REPO;
     localStorage.setItem(GH_REPO_KEY, repo);
     ghAssetsEl.innerHTML = '';
     ghLog(t('ghChecking') + repo + '...');
+    let items = [], tag = '';
     try {
-      // 1. releases/latest（GitHub API 支持 CORS）
-      const r = await fetch('https://api.github.com/repos/' + repo + '/releases/latest', { headers: { 'Accept': 'application/vnd.github+json' } });
-      let assets = [];
-      let tag = '';
-      if (r.ok) {
-        const rel = await r.json();
-        tag = rel.tag_name || '';
-        assets = (rel.assets || []).map(a => a.browser_download_url);
-        ghLog(t('ghRelease') + ' ' + tag + ' — ' + assets.length + ' ' + t('ghAssets'));
-      } else {
-        ghLog(t('ghNoRelease'));
-        // 2. fallback：raw 固定路径（main 分支）
-        const fw = ['SONIC170_hotswap.bin', 'SONIC170_solder.bin', 'sonic170_via_hotswap.json', 'sonic170_via_solder.json'];
-        assets = fw.map(f => 'https://raw.githubusercontent.com/' + repo + '/main/' + f);
-      }
-      if (!assets.length) { ghLog(t('ghNoAssets')); return; }
-      // 列出可下载资产（匹配固件/json 文件名）
+      // 源 A:GitHub releases/latest;源 B:Gitee raw latest.json(CN 快)——并发,谁先成功用谁
+      const ghP = fetchT('https://api.github.com/repos/' + repo + '/releases/latest', 5000)
+        .then(async r => {
+          if (!r.ok) throw new Error('gh ' + r.status);
+          const rel = await r.json();
+          return { tag: (rel.tag_name || '').replace(/^v/i, ''), items: (rel.assets || []).map(a => ({ name: a.name, url: a.browser_download_url })) };
+        });
+      const gtP = fetchT('https://gitee.com/' + GITEE_REPO + '/raw/main/latest.json', 5000)
+        .then(async r => {
+          if (!r.ok) throw new Error('gt ' + r.status);
+          const j = await r.json();
+          return { tag: String(j.version || ''), items: (j.files || []).map(f => ({ name: f, url: 'https://gitee.com/' + GITEE_REPO + '/raw/main/' + f })) };
+        });
+      const src = await Promise.race([ghP, gtP]).catch(() => null);
+      if (!src || !src.items.length) throw new Error('no source');
+      tag = src.tag; items = src.items;
       const want = /(sonic170|SONIC170).*(\.bin|\.json)$|(\.bin|\.json)$/i;
-      const list = assets.filter(u => want.test(u));
-      list.forEach((u) => {
-        const name = decodeURIComponent(u.split('/').pop());
-        const btn = document.createElement('button');
-        btn.textContent = 'Download ' + name;
-        btn.onclick = () => { const a = document.createElement('a'); a.href = u; a.download = name; a.click(); };
-        ghAssetsEl.appendChild(btn);
-      });
-      if (!list.length) ghLog(t('ghNoAssets'));
-      else ghLog(list.length + ' ' + t('ghFound'));
+      items = items.filter(it => want.test(it.name));
+      if (!items.length) { ghLog(t('ghNoAssets')); return; }
+      const verNote = (tag && tag === EMBED_FW_VERSION) ? t('ghUpToDate') + ' ' + tag + ' ' : (tag ? t('ghNewVer') + ' ' + tag + ' ' : '');
+      ghLog(verNote + items.length + ' ' + t('ghAssets') + ' — ' + t('ghPreloading'));
+      items.forEach(it => ghAssetsEl.appendChild(assetBtn(it.name, it.url)));
+      await preloadAll(items);
     } catch (e) {
-      ghLog(t('ghFail') + ': ' + e.message);
+      ghLog(t('ghFail') + ': ' + e.message + ' — ' + t('ghDirectNote'));
     }
   });
   document.getElementById('dlFwBtn').addEventListener('click', () => {
@@ -6380,14 +6415,16 @@ const I18N = {
     dlFw:'Download Firmware (4.8.1)',
     dlFwSolder:'Download Solder Firmware (4.8.1)',
     dfuDownloaded:'Firmware downloaded — flash it via the DFU dialog above.',
-    ghCheck:'Check GitHub Update',
+    ghCheck:'Check for Updates',
     ghBadRepo:'Enter a repository like owner/repo.',
     ghChecking:'Checking ',
-    ghRelease:'Latest release: ',
-    ghNoRelease:'No release found — falling back to raw files on main branch.',
+    ghUpToDate:'Up to date',
+    ghNewVer:'New version:',
     ghAssets:'assets', ghNoAssets:'No firmware/JSON assets found.',
-    ghFound:'downloadable asset(s) — click to save.',
-    ghFail:'GitHub check failed',
+    ghPreload:'Preloading', ghPreloading:'preloading in background…',
+    ghPreloaded:'preloaded — click to download instantly',
+    ghDirectNote:'direct-link fallback (preload blocked by network/CORS)',
+    ghFail:'Update check failed',
     commDiag:'Comm Diag (4.8.1+)',
     commDiagHint:'Click, then change a setting, then click again — see if set count rises.',
     commDiagFail:'Comm diag failed',
@@ -6589,14 +6626,16 @@ const I18N = {
     dlFw:'下载固件（4.8.1）',
     dlFwSolder:'下载焊接版固件（4.8.1）',
     dfuDownloaded:'固件已下载——可通过上方 DFU 弹窗烧录。',
-    ghCheck:'检查 GitHub 更新',
+    ghCheck:'检查更新',
     ghBadRepo:'请输入仓库名，格式 owner/repo。',
     ghChecking:'正在检查 ',
-    ghRelease:'最新版本：',
-    ghNoRelease:'未找到 Release——已回退到 main 分支的原始文件。',
+    ghUpToDate:'已是最新版本',
+    ghNewVer:'发现新版本:',
     ghAssets:'个资产', ghNoAssets:'未找到固件/JSON 资产。',
-    ghFound:'个可下载资产——点击保存。',
-    ghFail:'GitHub 检查失败',
+    ghPreload:'预下载', ghPreloading:'后台预下载中…',
+    ghPreloaded:'已缓存 — 点击立即下载',
+    ghDirectNote:'直链下载（网络受限未能预缓存）',
+    ghFail:'更新检查失败',
     commDiag:'通信诊断（需 4.8.1+）',
     commDiagHint:'点击读取计数 → 执行一次设置操作 → 再点读取，看 set 计数是否增加。',
     commDiagFail:'通信诊断失败',
