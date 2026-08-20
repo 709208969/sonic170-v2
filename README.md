@@ -7,6 +7,8 @@
 
 <p align="center"><img src="Sonic170-v2.jpg" width="640" alt="SONIC-170 v2 keyboard"></p>
 
+<p align="center"><img src="preview-en.png" width="640" alt="SONIC-170 v2 lighting editor — English UI"></p>
+
 **🌐 中文说明：[简体中文](README_zh-CN.md)**
 
 This repository contains everything you need to configure and reflash the SONIC-170 v2 keyboard:
