@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LED Panel Pattern Designer — sonic170 (v47.22)</title>
+<title>LED Panel Pattern Designer — sonic170 (v47.23)</title>
 <style>
   /* ================================================================
      Glassmorphism Design System — "Frosted Glass + Dark Gradient"
@@ -1289,7 +1289,7 @@
     <div class="header-text">
       <h1 data-i18n="title">SONIC-170 v2灯光编辑器</h1>
       <div class="app-subtitle" data-i18n="subtitle">powered by kindlestar</div>
-      <div class="app-subtitle" id="appVersionBadge" style="font-size:.7rem;opacity:.75">v47.22</div>
+      <div class="app-subtitle" id="appVersionBadge" style="font-size:.7rem;opacity:.75">v47.23</div>
     </div>
     <div class="theme-toggle" role="group" aria-label="Theme">
       <button type="button" data-theme-btn="dawn" data-i18n="themeDawn" title="">
@@ -1714,8 +1714,7 @@
       <button id="dlFwSolderBtn" data-i18n="dlFwSolder">Download Solder Firmware (4.8.1)</button>
     </div>
     <div class="via-dl-buttons">
-      <input id="ghRepoInput" placeholder="owner/repo" style="width:160px">
-      <button id="ghCheckBtn" data-i18n="ghCheck">Check GitHub Update</button>
+      <button id="ghCheckBtn" data-i18n="ghCheck">Check for Updates</button>
       <span id="ghOut" class="hint-text"></span>
     </div>
     <div id="ghAssets" class="via-dl-buttons"></div>
@@ -4040,14 +4039,11 @@ function bindDfuEvents() {
       dfuStatusMsg(t('dfuDownloaded'));
     } catch (e) { dfuStatusMsg(t('dfuFail') + ': ' + e.message); }
   });
-  // v47.22: 一键更新——双源自动探测(GitHub release / Gitee raw,谁快用谁)+ 后台预下载缓存,点击即下
-  const DEFAULT_REPO = '709208969/sonic170-v2';
-  const GITEE_REPO = 'kevinxu93/sonic170-v2';
+  // v47.23: 一键更新——三源并发探测(jsDelivr CDN / GitHub API / Gitee raw,谁快用谁)+ 后台预下载缓存
+  // 仓库固定,无需输入;jsDelivr 为 GitHub 仓库文件 CDN(支持 CORS、国内可达),资产文件已在仓库根
+  const REPO_GH = '709208969/sonic170-v2';
+  const REPO_GITEE = 'kevinxu93/sonic170-v2';
   const EMBED_FW_VERSION = '4.8.1';
-  const GH_REPO_KEY = 'sonic170_gh_repo';
-  const ghRepoInput = document.getElementById('ghRepoInput');
-  const savedRepo = localStorage.getItem(GH_REPO_KEY);
-  ghRepoInput.value = savedRepo || DEFAULT_REPO;
   const ghAssetsEl = document.getElementById('ghAssets');
   const ghOut = document.getElementById('ghOut');
   const ghLog = (m) => { if (ghOut) ghOut.textContent = m; };
@@ -4083,33 +4079,39 @@ function bindDfuEvents() {
       const it = items[i];
       ghLog(t('ghPreload') + ' (' + (i + 1) + '/' + items.length + ') ' + it.name);
       try {
-        const r = await fetchT(it.url, 15000);
+        const r = await fetchT(it.url, 20000);
         if (r.ok) { dlCache.set(it.url, await r.blob()); ok++; }
       } catch (e) { /* 单资产失败不中断,降级直链 */ }
     }
     ghLog(t('ghPreloaded') + ' ' + ok + '/' + items.length);
   };
   document.getElementById('ghCheckBtn').addEventListener('click', async () => {
-    const repo = ghRepoInput.value.trim() || DEFAULT_REPO;
-    localStorage.setItem(GH_REPO_KEY, repo);
     ghAssetsEl.innerHTML = '';
-    ghLog(t('ghChecking') + repo + '...');
+    ghLog(t('ghChecking') + REPO_GH + '...');
     let items = [], tag = '';
     try {
-      // 源 A:GitHub releases/latest;源 B:Gitee raw latest.json(CN 快)——并发,谁先成功用谁
-      const ghP = fetchT('https://api.github.com/repos/' + repo + '/releases/latest', 5000)
+      // 源 A:jsDelivr CDN(读 GitHub 仓库 latest.json,支持 CORS、国内快)
+      const jsdP = fetchT('https://cdn.jsdelivr.net/gh/' + REPO_GH + '@main/latest.json', 8000)
+        .then(async r => {
+          if (!r.ok) throw new Error('jsd ' + r.status);
+          const j = await r.json();
+          return { tag: String(j.version || ''), items: (j.files || []).map(f => ({ name: f, url: 'https://cdn.jsdelivr.net/gh/' + REPO_GH + '@main/' + f })) };
+        });
+      // 源 B:GitHub releases/latest
+      const ghP = fetchT('https://api.github.com/repos/' + REPO_GH + '/releases/latest', 8000)
         .then(async r => {
           if (!r.ok) throw new Error('gh ' + r.status);
           const rel = await r.json();
           return { tag: (rel.tag_name || '').replace(/^v/i, ''), items: (rel.assets || []).map(a => ({ name: a.name, url: a.browser_download_url })) };
         });
-      const gtP = fetchT('https://gitee.com/' + GITEE_REPO + '/raw/main/latest.json', 5000)
+      // 源 C:Gitee raw(国内快)
+      const gtP = fetchT('https://gitee.com/' + REPO_GITEE + '/raw/main/latest.json', 8000)
         .then(async r => {
           if (!r.ok) throw new Error('gt ' + r.status);
           const j = await r.json();
-          return { tag: String(j.version || ''), items: (j.files || []).map(f => ({ name: f, url: 'https://gitee.com/' + GITEE_REPO + '/raw/main/' + f })) };
+          return { tag: String(j.version || ''), items: (j.files || []).map(f => ({ name: f, url: 'https://gitee.com/' + REPO_GITEE + '/raw/main/' + f })) };
         });
-      const src = await Promise.race([ghP, gtP]).catch(() => null);
+      const src = await Promise.race([jsdP, ghP, gtP]).catch(() => null);
       if (!src || !src.items.length) throw new Error('no source');
       tag = src.tag; items = src.items;
       const want = /(sonic170|SONIC170).*(\.bin|\.json)$|(\.bin|\.json)$/i;
