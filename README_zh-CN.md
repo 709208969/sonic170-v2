@@ -7,7 +7,7 @@
 
 <p align="center"><img src="Sonic170-v2.jpg" width="640" alt="SONIC-170 v2 键盘"></p>
 
-<p align="center"><img src="preview-zh.png" width="640" alt="SONIC-170 v2 灯光编辑工具 — 中文界面"></p>
+<p align="center"><img src="preview-cn.png" width="640" alt="SONIC-170 v2 灯光编辑工具 — 中文界面"></p>
 
 **🌐 English: [English](README.md)**
 
