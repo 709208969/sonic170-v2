@@ -156,7 +156,7 @@ Flash 总容量 512KB(**编译期常量**)/固件占用(链接符号 `__textdata
 | value_id 41 动画同步、拔出检测弹窗真机 | ⬜ 待验证(曾部分验证) |
 | 打字显示字形(方案 B) | 待开发:13×13 点阵字库 |
 | json 菜单缺失 | VIA 无菜单(用户决定不补) |
-| 固件 git 状态 | v2-v47 全部未提交 |
+| 固件 git 状态 | ✅ 已提交(2026-08-25,feat/upgrade-qmk-0.33 745fbb1a4e,含 v2-v47 + 4.9.0 全量存档);网页仓库 main c472b35(v47.45) |
 | 杂物清理 | solder 多余 `sonic170_via_hotswap.json`、hotswap `keymap.c.bak`、solder keymap 首行 BOM 无害 |
 
 **注意事项(下轮必记)**:
