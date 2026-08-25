@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LED Panel Pattern Designer — sonic170 (v47.50)</title>
+<title>LED Panel Pattern Designer — sonic170 (v47.51)</title>
 <style>
   /* ================================================================
      Glassmorphism Design System — "Frosted Glass + Dark Gradient"
@@ -1336,7 +1336,7 @@
     <div class="header-text">
       <h1 data-i18n="title">SONIC-170 v2灯光编辑器</h1>
       <div class="app-subtitle" data-i18n="subtitle">powered by kindlestar</div>
-      <div class="app-subtitle" id="appVersionBadge" style="font-size:.7rem;opacity:.75">v47.50</div>
+      <div class="app-subtitle" id="appVersionBadge" style="font-size:.7rem;opacity:.75">v47.51</div>
     </div>
     <div class="theme-toggle" role="group" aria-label="Theme">
       <button type="button" data-theme-btn="dawn" data-i18n="themeDawn" title="">
@@ -4457,7 +4457,9 @@ function bindDfuEvents() {
           const j = await r.json();
           return { tag: String(j.version || ''), items: (j.files || []).map(f => ({ name: f, url: 'https://gitee.com/' + REPO_GITEE + '/raw/main/' + f })) };
         });
-      const src = await Promise.race([jsdP, ghP, gtP]).catch(() => null);
+      // v47.51: race→any 修复——race 是"最快 settle 者胜"，Gitee 403 防盗链必败且常最快
+      //          （比 jsDelivr 快毫秒级）→ 整个检查误报 no source；any 取第一个成功的源，全败才降级
+      const src = await Promise.any([jsdP, ghP, gtP]).catch(() => null);
       if (!src || !src.items.length) throw new Error('no source');
       tag = src.tag; items = src.items;
       const want = /(sonic170|SONIC170).*(\.bin|\.json)$|(\.bin|\.json)$/i;
