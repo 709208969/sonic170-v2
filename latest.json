@@ -4,6 +4,7 @@
     "SONIC170_hotswap_v4.8.1_20260820_1921.bin",
     "SONIC170_solder_v4.8.1_20260820_1925.bin",
     "sonic170_via_hotswap.json",
-    "sonic170_via_solder.json"
+    "sonic170_via_solder.json",
+    "sonic170_dfu_driver.zip"
   ]
 }

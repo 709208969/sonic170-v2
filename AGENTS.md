@@ -10,7 +10,7 @@
 | 项 | 值 |
 |----|----|
 | 项目 | sonic170 热插拔键盘灯光系统:网页配置工具 + QMK 固件三区域独立灯控 |
-| 网页工具 | **`K:\0AMAC\github-opensource\sonic170-v2\sonic170v2-rgb-control.html`**(单文件、零依赖、WebHID、中英双语,约 1.86MB,含内嵌 VIA json) |
+| 网页工具 | **`K:\0AMAC\github-opensource\sonic170-v2\sonic170v2-rgb-control.html`**(单文件、零依赖、WebHID、中英双语,约 1.81MB,含内嵌 VIA json) |
 | 固件 | `K:\qmk-k2\keyboards\kindlestar\sonic170hotswap\`(分支 `feat/upgrade-qmk-0.33`) |
 | 姊妹版 | `K:\qmk-k2\keyboards\kindlestar\sonic170solder\`(焊接版,PID 0x0072,与 hotswap 同源同步) |
 | MCU | STM32F411xE(96MHz;链接脚本名 STM32F401xE_CUSTOM,实际 512KB Flash / 128KB RAM) |
@@ -20,8 +20,8 @@
 **核心设计原则**:网页一切操作即时生效(设置 change 即发;图案编辑停止 800ms 自动发送;帧动画需点「上传到键盘」)。
 
 **当前状态(2026-08-25)**:
-- 固件 **4.9.0**(hotswap 63,748B / solder 62,688B;**cfg 区窗口协议**:value_id 44=元信息(layout_version+cfg_size+写拒绝计数)/45=窗口读/46=窗口写,白名单仅 pad_pattern_cfg 区 56B,读写校验布局版本(RGB_CONTROL_LAYOUT_VERSION=1),写后固件做 mode 回落校验(与 setter 同语义)+激活图案逐字段投影(零副作用,不触发雨滴重 init/动画槽激活);改键/宏走 channel 1 不受影响;真机待验证)
-- 网页 **v47.45**(1,880,676B;v47.43 图案配置暂存区 + v47.44 未上传修改提示/传输统计 + **v47.45 窗口协议主流程**:4.9.0+ 固件全量读取 3 条命令零切图案零闪灯,46 批量写接入清除动画;旧固件自动降级 v47.43 切图案流程;待真机验证)
+- 固件 **4.9.1**(hotswap 63,828B / solder 62,760B;**4.9.1 动画保存修复**:保存目标槽 save_slot 与 active_slot 解耦,切图案不再中断/清空 EEPROM 保存(finish_pending_save 换槽前同步完成未竟保存,~100-300ms 仅上传后 1s 内切槽触发);chunk 32→256B(log 记录少 8 倍,consolidation 压力大降);移除 v4.8.2 abort_save_and_clear_slot 清头部逻辑(网页 v47.41 起已加 CRC 拒读,理由不成立;旧逻辑导致上传后切图案 → EEPROM 动画永久丢失 → 重连读不到动画只 RAM 播);4.9.0 cfg 区窗口协议:value_id 44=元信息(layout_version+cfg_size+写拒绝计数)/45=窗口读/46=窗口写,白名单仅 pad_pattern_cfg 区 56B,读写校验布局版本(RGB_CONTROL_LAYOUT_VERSION=1),写后固件做 mode 回落校验+激活图案逐字段投影)
+- 网页 **v47.50**(v47.50 图案位图上传保护:readPatternSlot 改合并语义(读回不回填"读取期间用户画过"的格,替代 v47.30/40 整体丢弃)+ 失败自动重读 1 次(500ms 避开忙窗口)+ `patternGridComplete` 完整性标志——上传前置强制重读,仍不完整弹窗「再试一次/取消」,绝不把残缺缓存写进键盘(修复"切图案后图案位被未知值覆盖清空/错位",读失败/画读竞态双链);v47.49 DFU 弹窗 Windows 驱动助手(WinUSB,免 Zadig);v47.48 读槽失败明确提示(动画持久化缺失/损坏,备份自动重传);v47.47 窗口读首片延迟 1.5s 避开连接后 EEPROM consolidation 忙窗口;v47.46 传输健壮性:回显校验加 value_id(bytes>2 时)+ 窗口读 3 次重试(间隔 100ms)+ 全量读取失败自动重试 1 次 → 仍失败弹窗「再试一次/不试了」用户感知,不再静默降级 legacy——修复固件忙窗口致 (54,2) 单片超时 → legacy 56 条突发读迟到回显错配 → 缓存全黑 → 上传把黑写进 EEPROM 的连锁)
 - 磨损评估:正常使用 40 年+,不会变砖(bootloader 不可擦除 + 网页 DFU 可恢复)
 
 ---
@@ -140,7 +140,7 @@ Flash 总容量 512KB(**编译期常量**)/固件占用(链接符号 `__textdata
 12. **网页单文件**:开始核对大小/锚点,结束记录
 13. **固件版本号纪律**:每次固件改动必须 bump rules.mk FIRMWARE_VERSION(两版一致)——功能 minor+1、修复 patch+1
 14. **单板修复必须同步姊妹板**(v46.12 教训:solder 缺修复 → 上传卡死)
-15. **网页版本号纪律(v47.1 起)**:每次网页代码任何更新 bump 版本号(十进制 patch+1,每 10 次主版本+1、patch 归 0)——同步更新 `<title>` + `appVersionBadge`。**当前 v47.45**
+15. **网页版本号纪律(v47.1 起)**:每次网页代码任何更新 bump 版本号(十进制 patch+1,每 10 次主版本+1、patch 归 0)——同步更新 `<title>` + `appVersionBadge`。**当前 v47.50**
 
 ---
 
@@ -151,6 +151,7 @@ Flash 总容量 512KB(**编译期常量**)/固件占用(链接符号 `__textdata
 | solder 4.8.2 烧录验证 | ⬜ 待烧录 |
 | 固件 4.8.2 真机验证(双槽读取/清除单槽/半写清理) | ⬜ 待烧录复测 |
 | v47.41 真机复测(双槽动画读取播放/清除图案4不影响图案3/自动重传/版本提示) | ⬜ 待复测 |
+| v47.50 真机验证(连接后立刻画图不覆盖键盘/读失败弹窗再试取消/恢复出厂导入清除动画上传正常) | ⬜ 待复测 |
 | Side y 轴 5/15/16/24/25 观感、Caps 精简回填 | ⬜ 待真机 |
 | 磨损% 显示(value_id 40 wear 字段) | ⬜ 待验证 |
 | value_id 41 动画同步、拔出检测弹窗真机 | ⬜ 待验证(曾部分验证) |
@@ -160,7 +161,8 @@ Flash 总容量 512KB(**编译期常量**)/固件占用(链接符号 `__textdata
 | 杂物清理 | solder 多余 `sonic170_via_hotswap.json`、hotswap `keymap.c.bak`、solder keymap 首行 BOM 无害 |
 
 **注意事项(下轮必记)**:
-- 网页必须 file:// 打开 + Ctrl+F5 强刷(标题栏应显示 v47.45)
+- 网页必须 file:// 打开 + Ctrl+F5 强刷(标题栏应显示 v47.50)
+- **v47.50 图案位图完整性契约**:`patternGridComplete[slot]` = 缓存完整(读满 169 格 failed==0,或本地全量填充 markGridLocallyFilled:清空/全亮/反色/旋转/平移/导入/恢复默认/清除动画);`paintedSinceRead[slot]` = 读取开始后用户画过的格(读回合并保护,不回填);sendPattern 前置 `if (!patternGridComplete[currentSlot]) await readPatternSlot(currentSlot)` 仍不完整 → patternUploadModal 弹窗「再试一次/取消上传」——**残缺缓存绝不写键盘**;readPatternSlot 合并语义替代 v47.30/40 discard(两处补丁叠加的语义债);失败自动整槽重读 1 次(500ms 避开 consolidation 忙窗口);连接时清 patternGridComplete(重读键盘)
 - **v4.9.0 cfg 窗口协议契约**:偏移 = cfg 区相对偏移(图案 i × 7 + 字段: hue0/sat1/val2/mode3/speed4/animCell5/animMatrix6);`RGB_CONTROL_LAYOUT_VERSION=1`(固件 rgb_control.h + 网页 CFG_LAYOUT_VERSION 双端,布局变更双端同步 +1);窗口写后固件自动 mode 回落(非动画槽 31→0)+ 激活图案逐字段投影(不触发雨滴重 init/动画槽激活);46 写 ≤25B/条;动画上传期间禁 45/46(v7 中止规则);网页与 VIA 不能同时操作(共享 channel 0)
 - **v4.9.0 以后不动固件的边界**:图案配置(cfg 区)读写零改动;加 cfg 字段 = 网页单端同步偏移表;加全局字段/新存储区段仍需固件(评估存储预算:64KB 逻辑区已用 ~54KB,剩 ~10KB,超预算=backing 扩容=全片擦除灾难)
 - **v47.45 网页窗口主流程**:连接 → 等 fwVersionDetected(3s) → firmwareSupportsWindowProto()(≥4.9.0)→ 44 元信息校验 → 45 读 56B(3 条)→ 缓存;旧固件降级 syncAllPatternConfigsLegacy(切图案流程);清除动画用 46 批量写(旧固件降级 setter)

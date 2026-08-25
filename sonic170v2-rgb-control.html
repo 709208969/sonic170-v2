@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LED Panel Pattern Designer — sonic170 (v47.45)</title>
+<title>LED Panel Pattern Designer — sonic170 (v47.50)</title>
 <style>
   /* ================================================================
      Glassmorphism Design System — "Frosted Glass + Dark Gradient"
@@ -1298,6 +1298,24 @@
   }
   .modal-box p { margin: 0 0 18px; font-size: .9rem; line-height: 1.6; }
   .modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
+
+  /* ── v47.49: DFU 弹窗 Windows 驱动助手（WinUSB，免 Zadig） ──────────── */
+  .dfu-driver-block {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border: 1px solid rgba(251,191,36,.25);
+    border-radius: var(--radius-sm);
+    background: var(--warn-soft);
+  }
+  .dfu-driver-block[hidden] { display: none; }
+  .dfu-driver-block .anim-group-title { margin-bottom: 6px; }
+  .dfu-driver-text {
+    font-size: .78rem;
+    color: var(--t-mid);
+    line-height: 1.6;
+    margin: 4px 0 10px;
+  }
+  .dfu-driver-block .via-dl-buttons { margin-bottom: 0; }
 </style>
 <script>
   // v35.19：默认白昼主题（首次访问/无存储时 data-theme=dawn；玻璃=default 无属性）。首帧渲染前恢复持久化主题（防闪烁）
@@ -1318,7 +1336,7 @@
     <div class="header-text">
       <h1 data-i18n="title">SONIC-170 v2灯光编辑器</h1>
       <div class="app-subtitle" data-i18n="subtitle">powered by kindlestar</div>
-      <div class="app-subtitle" id="appVersionBadge" style="font-size:.7rem;opacity:.75">v47.45</div>
+      <div class="app-subtitle" id="appVersionBadge" style="font-size:.7rem;opacity:.75">v47.50</div>
     </div>
     <div class="theme-toggle" role="group" aria-label="Theme">
       <button type="button" data-theme-btn="dawn" data-i18n="themeDawn" title="">
@@ -2663,7 +2681,7 @@ const DEFAULT_PATTERN_BITS = [[[0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,
 
 function restoreDefaultPattern() {
   userModified = true; // v47.30: 用户操作——后台同步回填失效
-  patternLocalDirty = true; // v47.40: 编辑图案位图
+  markGridLocallyFilled(currentSlot); // v47.50: 恢复默认 = 完整本地真相
   const idx = Number(currentSlot);
   const bits = idx < 3 ? DEFAULT_PATTERN_BITS[idx] : null;
   const rows = PATTERN_DATA[currentSlot];
@@ -2756,6 +2774,7 @@ function applyDefaultConfigLocal() {
   if (g('animMatrixBrightness')) g('animMatrixBrightness').value = '200';
   // v47.35: 仅重置当前槽位图案位图（0-2 出厂默认位图 / 3-7 全部点亮）
   const curSlot = String(curIdx);
+  markGridLocallyFilled(curSlot); // v47.50: 恢复出厂 = 完整本地真相，上传不重读
   if (curIdx < 3) {
     const bits = DEFAULT_PATTERN_BITS[curIdx];
     const rows = PATTERN_DATA[curSlot];
@@ -2797,6 +2816,16 @@ function getCell(slot, row, col) {
 
 function setCell(slot, row, col, value) {
   grids[slot][stateKeyOf(row, col)] = value ? 1 : 0;
+}
+
+// v47.50: 本地全量填充标记——整格操作（清空/全亮/反色/旋转/平移/导入/恢复）后缓存即完整本地真相：
+// 标记后上传无需重读、进行中的键盘读回也不覆盖（全部格视为"已编辑"）
+function markGridLocallyFilled(slot) {
+  const s = paintedSinceRead[slot] || (paintedSinceRead[slot] = new Set());
+  const rows = PATTERN_DATA[slot];
+  if (rows) rows.forEach((r) => r.cells.forEach((c) => s.add(cellKey(r.row, c.col))));
+  patternGridComplete[slot] = true;
+  patternReadStates[slot] = 'done';
 }
 
 // v47.31: 日志行数上限——防无限增长占内存；超限裁剪最旧日志并在顶部保留一条裁剪提示
@@ -3332,14 +3361,18 @@ function toggleMirrorV() {
 
 function applyPaint(row, col, value) {
   userModified = true; // v47.30: 用户编辑——后台同步回填失效
-  patternLocalDirty = true; // v47.40: 编辑图案位图——读取中的图案位回填丢弃
+  // v47.50: 记录画过的格——进行中的读回合并时保护，不被键盘值覆盖
+  const touched = paintedSinceRead[currentSlot] || (paintedSinceRead[currentSlot] = new Set());
+  const touch = (r, c) => touched.add(cellKey(r, c));
   setCell(currentSlot, row, col, value);
+  touch(row, col);
 
   if (mirrorHActive) {
     const [rMin, rMax] = rowMinMaxCol(row);
     const mirroredCol = rMin + rMax - col;
     if (cellExists(row, mirroredCol)) {
       setCell(currentSlot, row, mirroredCol, value);
+      touch(row, mirroredCol);
     }
   }
   if (mirrorVActive) {
@@ -3349,12 +3382,14 @@ function applyPaint(row, col, value) {
     const mirroredRow = maxRow + minRow - row;
     if (cellExists(mirroredRow, col)) {
       setCell(currentSlot, mirroredRow, col, value);
+      touch(mirroredRow, col);
     }
     if (mirrorHActive) {
       const [rMin2, rMax2] = rowMinMaxCol(mirroredRow);
       const mirroredCol2 = rMin2 + rMax2 - col;
       if (cellExists(mirroredRow, mirroredCol2)) {
         setCell(currentSlot, mirroredRow, mirroredCol2, value);
+        touch(mirroredRow, mirroredCol2);
       }
     }
   }
@@ -3390,7 +3425,7 @@ async function guardedGridEdit(fn) {
 }
 
 function clearGrid() {
-  patternLocalDirty = true; // v47.40
+  markGridLocallyFilled(currentSlot); // v47.50: 整格操作 = 完整本地真相，可直接上传
   grids[currentSlot] = {};
   refreshAllCellVisuals();
   log(t('logClear'));
@@ -3398,7 +3433,7 @@ function clearGrid() {
 }
 
 function fillGrid() {
-  patternLocalDirty = true; // v47.40
+  markGridLocallyFilled(currentSlot); // v47.50
   PATTERN_DATA[currentSlot].forEach((r) =>
     r.cells.forEach((c) => setCell(currentSlot, r.row, c.col, 1)),
   );
@@ -3408,7 +3443,7 @@ function fillGrid() {
 }
 
 function invertGrid() {
-  patternLocalDirty = true; // v47.40
+  markGridLocallyFilled(currentSlot); // v47.50
   PATTERN_DATA[currentSlot].forEach((r) =>
     r.cells.forEach((c) => {
       const current = getCell(currentSlot, r.row, c.col);
@@ -3424,7 +3459,7 @@ function invertGrid() {
 // cost: n×m 矩阵（n 个源，m 个目标，要求 n ≤ m），返回 [{source, target}]，总成本最小
 // 标准 e-maxx 矩形版本：不补虚拟行（n ≤ m 时未匹配的列自然空闲）
 function rotateGrid90() {
-  patternLocalDirty = true; // v47.40
+  markGridLocallyFilled(currentSlot); // v47.50
   // 顺时针旋转 90°（v17：精确整数映射，替代原 45° 近似算法）
   // 物理坐标 b[3]=x=行(垂直)、b[4]=y=列(水平)，顺时针 90°： (x,y) → (y, 12-x)
   // 像素只在有效格之间迁移，目标为无灯格时丢弃
@@ -3458,7 +3493,7 @@ function rotateGrid90() {
 // 像素只在有效格之间迁移，目标为无灯格时丢弃。
 function moveGrid(dx, dy) {
   if (!dx && !dy) return;
-  patternLocalDirty = true; // v47.40
+  markGridLocallyFilled(currentSlot); // v47.50
   const valid = new Set();
   PATTERN_DATA[currentSlot].forEach((r) => r.cells.forEach((c) => valid.add(cellKey(r.row, c.col))));
   const newGrid = {};
@@ -3493,6 +3528,7 @@ function importPattern(file) {
     try {
       const data = JSON.parse(reader.result);
       grids[currentSlot] = data;
+      markGridLocallyFilled(currentSlot); // v47.50: 导入 = 本地真相，完整可直接上传
       refreshAllCellVisuals();
       log(t('loadedMsg') + file.name);
       scheduleAutoSend();
@@ -3510,9 +3546,11 @@ let liveSyncEnabled = false;
 // v47.30: 用户已操作标记——连接后后台同步（syncAllState/readPatternSlot）回填与用户操作竞态：
 // 用户编辑/上传后，旧值回填会覆盖本地状态（上传后预览灰/不播放动画）。置位后后台同步读全部失效。
 let userModified = false;
-// v47.40: 用户**编辑图案位图**标记（切图案查看/设置类操作不算）——readPatternSlot 读取期间
-// 用户实际编辑图案才丢弃读取结果（防旧数据覆盖编辑）；userModified 只拦后台同步回填，不拦用户主动查看。
-let patternLocalDirty = false;
+// v47.50: 槽位图案位图缓存状态——patternGridComplete = 缓存完整（读满 169 格或本地全量填充），
+// 不完整禁止上传（防残缺缓存写坏键盘，曾致图案错位/清空）；paintedSinceRead = 读取开始后用户画过的格
+// （读回合并时保护，不被键盘值覆盖本地编辑）。替代 v47.40 patternLocalDirty 的"整体丢弃"语义。
+const patternGridComplete = {};
+const paintedSinceRead = {};
 // v47.42: 固件版本记录（getDevInfo2 上报）——双槽 EEPROM 读取需 4.8.2（bit14 协议），
 // 旧固件下槽 0 读取会退化/错位 → syncKeyboardToPage 跳过槽 0 并提示升级
 let fwVersionDetected = null;
@@ -3625,6 +3663,8 @@ async function connect() {
     // v47.40: 连接成功后清空图案读取状态——未连接时的默认图案填充标了 'done'，
     // 不清空则连接后切图案不重读固件位图（显示未连接默认，而非键盘真实值）
     Object.keys(patternReadStates).forEach(k => delete patternReadStates[k]);
+    // v47.50: 完整性标志同清——连接后重新读键盘，缓存完整才可上传
+    Object.keys(patternGridComplete).forEach(k => delete patternGridComplete[k]);
     // 握手验证：读 master_enable，确认回显链路通畅（VIA 占用时回显会被抢/超时）
     let handshake = false;
     try {
@@ -3898,7 +3938,7 @@ async function syncKeyboardToPageInner() {
     }
     const item = await readAnimSlot(slot);
     if (item === 'empty') { anyEmpty = true; log('slot ' + slot + ': no animation'); continue; }
-    if (item === null) { anyReadFail = true; log('slot ' + slot + ': read failed'); continue; }
+    if (item === null) { anyReadFail = true; log('slot ' + slot + ': ' + t('animSlotReadFailHint'), true); continue; }
     found[pat] = item;
   }
   const pats = Object.keys(found).map(Number);
@@ -3990,16 +4030,17 @@ async function sendReport(bytes, skipEchoVerify) {
     }
     return await echoPromise;
   };
-  const response = await doSend();
-  if (!skipEchoVerify && response && (response[0] !== bytes[0] || response[1] !== bytes[1])) {
-    // v47.1: 回显校验失败重试一次（防单次迟到回显错配导致命令"假失败"）
-    try {
-      return await doSend();
-    } catch (e) {
-      throw new Error('Unexpected echo from keyboard (got ' + Array.from(response.slice(0, 4)).join(',') + ')');
-    }
+  // v47.46: 回显校验含 value_id（bytes.length>2 时）——迟到回显错配（命令+通道相同但 value_id
+  // 不同的旧响应）立即触发重试，不再静默误认；修复窗口读/legacy 读取被旧回显污染导致全黑/错值
+  let response = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    response = await doSend();
+    if (skipEchoVerify) return response;
+    if (response && response[0] === bytes[0] && response[1] === bytes[1]
+        && (bytes.length <= 2 || response[2] === bytes[2])) return response;
+    if (!response) return response;
   }
-  return response;
+  throw new Error('Unexpected echo from keyboard (got ' + (response ? Array.from(response.slice(0, 4)).join(',') : 'null') + ')');
 }
 
 // 通用 VIA 命令入口：构造 [commandId, ...payload] 发送并返回回显（0x08 读取时取响应数据）
@@ -4458,6 +4499,42 @@ function bindDfuEvents() {
   document.getElementById('dfuOpenBtn').addEventListener('click', () => {
     document.getElementById('dfuModal').hidden = false;
   });
+  // v47.49: Windows 驱动助手——ST 官方 WinUSB 签名驱动包（免 Zadig）。
+  // 下载策略：file:// 同目录相对路径；https 先 jsDelivr CDN fetch（CORS 可用），
+  // 失败降级为 a 标签直链跳转（Gitee raw / GitHub raw 无 CORS 头，但浏览器可直接下载）。
+  const dfuDriverBlock = document.getElementById('dfuDriverBlock');
+  if (dfuDriverBlock && /win/i.test(navigator.platform || '')) dfuDriverBlock.hidden = false;
+  const dfuDrvBtn = document.getElementById('dfuDrvBtn');
+  const dfuDrvStatusEl = document.getElementById('dfuDrvStatus');
+  if (dfuDrvBtn) dfuDrvBtn.addEventListener('click', async () => {
+    const DRV_ZIP = 'sonic170_dfu_driver.zip';
+    const directDl = (u) => {
+      const a = document.createElement('a');
+      a.href = u; a.download = DRV_ZIP;
+      document.body.appendChild(a); a.click(); a.remove();
+    };
+    const saveBlob = (blob) => {
+      const url = URL.createObjectURL(blob);
+      directDl(url);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    };
+    try {
+      if (location.protocol === 'file:') {
+        directDl(DRV_ZIP);
+      } else {
+        let got = null;
+        try {
+          const r = await fetch('https://cdn.jsdelivr.net/gh/' + REPO_GH + '@main/' + DRV_ZIP, { cache: 'no-store' });
+          if (r.ok) got = await r.blob();
+        } catch (e) { /* 走降级直链 */ }
+        if (got) saveBlob(got);
+        else directDl('https://gitee.com/' + REPO_GITEE + '/raw/main/' + DRV_ZIP);
+      }
+      if (dfuDrvStatusEl) dfuDrvStatusEl.textContent = t('dfuDrvHint2');
+    } catch (e) {
+      if (dfuDrvStatusEl) dfuDrvStatusEl.textContent = t('dfuDrvFail');
+    }
+  });
   document.getElementById('dfuCloseBtn').addEventListener('click', () => {
     document.getElementById('dfuModal').hidden = true;
     if (dfuDevice) { try { dfuDevice.close(); } catch (e) {} dfuDevice = null; }
@@ -4471,7 +4548,7 @@ function bindDfuEvents() {
       await dfuDevice.claimInterface(0);
       dfuStatusMsg(t('dfuConnected') + (dfuDevice.productName || ''));
     } catch (e) {
-      dfuStatusMsg(t('dfuConnectFail') + ': ' + e.message);
+      dfuStatusMsg(t('dfuConnectFail') + ': ' + e.message + (/win/i.test(navigator.platform || '') ? ' ' + t('dfuDrvHint3') : ''));
     }
   });
   document.getElementById('dfuFileBtn').addEventListener('click', () => {
@@ -4746,8 +4823,22 @@ async function syncAllState() {
 // ---------------- 图案位按需读取（切到某槽位时后台读 13×13=169 次，串行） ----------------
 
 const patternReadStates = {}; // slot -> undefined | 'reading' | 'done'
+const patternReadTask = {};   // v47.50: slot -> Promise——进行中的读取任务（上传前置可等待其完成）
 
-async function readPatternSlot(slot) {
+// v47.50: 读取任务缓存（去重 + 可等待）——readPatternSlot 返回进行中任务本身，避免并发重复读
+function readPatternSlot(slot) {
+  if (patternReadTask[slot]) return patternReadTask[slot];
+  patternReadTask[slot] = (async () => {
+    try {
+      await doReadPatternSlot(slot);
+    } finally {
+      delete patternReadTask[slot];
+    }
+  })();
+  return patternReadTask[slot];
+}
+
+async function doReadPatternSlot(slot) {
   if (!hidDevice) {
     // v2.1: 未连接——本地默认图案填充（0-2 默认图案位图；3-7 保持本地已编辑状态），预览/编辑可见
     if (Number(slot) < 3 && !patternReadStates[slot]) {
@@ -4755,6 +4846,7 @@ async function readPatternSlot(slot) {
       const rows = PATTERN_DATA[slot];
       rows.forEach((r) => r.cells.forEach((c) => setCell(slot, r.row, c.col, bits[c.b[3]][c.b[4]] ? 1 : 0)));
       patternReadStates[slot] = 'done';
+      patternGridComplete[slot] = true;
       if (slot === currentSlot) refreshAllCellVisuals();
     }
     return;
@@ -4773,38 +4865,46 @@ async function readPatternSlot(slot) {
   progressEl.value = 0;
   progressEl.style.display = 'block';
 
+  // v47.50: 读取开始后用户画过的格（合并保护）——同一 Set 引用持续到读取完成，画过的格不回填
+  const touched = (paintedSinceRead[slot] || (paintedSinceRead[slot] = new Set()));
+  const temp = {};
   let failed = 0;
   try {
-    // v47.30: 读取结果先入临时缓存——读取期间用户编辑则整体丢弃，防止旧键盘数据回填覆盖本地编辑
-    // v47.40: 丢弃条件改为 patternLocalDirty（仅"实际编辑图案位图"触发；切图案查看不触发）——
-    // 此前用 userModified 导致切图案查看时读取全部失败 → 所有图案显示初始全灭
-    const skipIfDirty = patternLocalDirty; // 读取开始前已编辑 → 完成后丢弃
-    patternLocalDirty = false;             // 重置，读取期间的新编辑会重新置位
-    const temp = {};
-    for (let i = 0; i < allCells.length; i++) {
-      const cell = allCells[i];
-      let bit = null;
-      // v47.40: force=true——用户主动查看图案的读取不受 userModified 拦截
-      bit = await readWithRetry(() => getPadPatternBit(patternIndex, cell.x, cell.y), VID_PAD_CUSTOM_PATTERN, true);
-      if (bit === null) {
-        failed++;
-        if (patternLocalDirty) break;
-      } else {
-        temp[cellKey(cell.row, cell.col)] = bit ? 1 : 0;
+    // v47.50: 最多 2 次整槽尝试，失败后等 500ms 重读（避开固件 EEPROM consolidation 忙窗口）
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      failed = 0;
+      for (let i = 0; i < allCells.length; i++) {
+        const cell = allCells[i];
+        // v47.40: force=true——用户主动查看图案的读取不受 userModified 拦截
+        const bit = await readWithRetry(() => getPadPatternBit(patternIndex, cell.x, cell.y), VID_PAD_CUSTOM_PATTERN, true);
+        if (bit === null) failed++;
+        else temp[cellKey(cell.row, cell.col)] = bit ? 1 : 0;
+        progressEl.value = i + 1;
       }
-      progressEl.value = i + 1;
+      if (failed === 0) break;
+      if (attempt === 1) {
+        log(t('patternReadRetry'));
+        await new Promise((r) => setTimeout(r, 500));
+      }
     }
-    if (skipIfDirty || patternLocalDirty) {
+    // v47.50: 合并语义（替代 v47.30/40 整体丢弃）——键盘真相回填，但"读取开始后用户画过"的格保留本地编辑
+    for (const key of Object.keys(temp)) {
+      if (!touched.has(key)) grids[slot][key] = temp[key];
+    }
+    if (failed === 0) {
       patternReadStates[slot] = 'done';
-      log(t('patternReadSkip'));
-    } else {
-      Object.assign(grids[slot], temp);
-      patternReadStates[slot] = 'done';
+      patternGridComplete[slot] = true;
       if (slot === currentSlot) refreshAllCellVisuals();
-      log(t('patternReadOk') + (failed ? failed + t('patternReadFail') : ''));
+      log(t('patternReadOk'));
+    } else {
+      patternReadStates[slot] = undefined; // 允许下次重读
+      patternGridComplete[slot] = false;   // v47.50: 不完整——上传前置会强制重读，绝不写坏键盘
+      if (slot === currentSlot) refreshAllCellVisuals();
+      log(failed + t('patternReadFail'), true);
     }
   } catch (e) {
-    patternReadStates[slot] = undefined; // 允许下次重试
+    patternReadStates[slot] = undefined;
+    patternGridComplete[slot] = false;
     log(t('readFail') + '0x05): ' + e.message, true);
   } finally {
     progressEl.style.display = 'none';
@@ -5064,12 +5164,16 @@ function parseCfgBytes(b) {
 }
 
 // cfg 窗口读（固件回显 [layout_version, data...]；版本不符/越界/超时 → null）
+// v47.46: 内部重试 3 次（间隔 100ms）——固件忙窗口（EEPROM 写入阻塞 USB）可致单次超时，1 次失败即降级风险大
 async function readCfgWindow(offset, len) {
-  try {
-    const r = await enqueue(() => sendViaCommand(CMD_CUSTOM_GET_VALUE, CHANNEL_CUSTOM, VID_CFG_READ, offset, len));
-    if (!r || r[3] !== CFG_LAYOUT_VERSION) return null;
-    return r.slice(4, 4 + len);
-  } catch (e) { return null; }
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const r = await enqueue(() => sendViaCommand(CMD_CUSTOM_GET_VALUE, CHANNEL_CUSTOM, VID_CFG_READ, offset, len));
+      if (r && r[3] === CFG_LAYOUT_VERSION) return r.slice(4, 4 + len);
+    } catch (e) { /* 重试 */ }
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 100));
+  }
+  return null;
 }
 
 // cfg 窗口写（len ≤ 25；版本不符/越界/超时 → false）
@@ -5111,8 +5215,21 @@ async function writePatternCfg(pat, cfg) {
   return true;
 }
 
-// v4.9.0: 窗口协议全量读取——3 条命令读 56B，零切图案、零闪灯、零 EEPROM 写
+// v4.9.0: 窗口协议全量读取——3 条命令读 56B，零切图案、零闪灯、零 EEPROM 写。
+// v47.46: 失败自动重试 1 次 → 仍失败弹窗让用户选择（再试一次 / 不试了降级），
+// 不静默降级 legacy（切图案闪灯 + 迟到回显污染缓存的连锁风险）
 async function syncAllPatternConfigsWindow() {
+  if (await windowReadOnce()) return true;
+  log(t('cfgFailAutoRetry'), true);
+  if (await windowReadOnce()) return true;
+  const retry = await animModal('cfgFailModal', 'cfgFailRetryBtn', 'cfgFailSkipBtn', 'cfgFailMsg', t('cfgFailMsg'));
+  if (retry && await windowReadOnce()) return true;
+  log(t('cfgFailLegacy'), true);
+  return false;
+}
+
+// 窗口协议读取一次全量 56B 并填充缓存；任一单片失败返回 false
+async function windowReadOnce() {
   const t0 = performance.now();
   const buf = new Uint8Array(CFG_PAT_COUNT * CFG_FIELD_BYTES);
   for (let off = 0; off < buf.length; off += 27) {
@@ -5132,6 +5249,8 @@ async function syncAllPatternConfigsWindow() {
 
 // 连接时全量读取 8 图案配置 → 暂存区
 // v4.9.0: 4.9.0+ 固件走窗口协议（3 条命令零副作用）；旧固件降级切图案流程
+// v47.47: 窗口协议首片延迟 1.5s——连接后固件常处于 EEPROM consolidation 忙窗口
+//（log 区写满触发擦除+重写，USB 阻塞最长 30s，教训 34），避开忙窗口免全程重试拖慢
 async function syncAllPatternConfigs() {
   if (!hidDevice) return;
   // v4.9.0: 等待固件版本检测（3s）——窗口协议需 4.9.0+；超时按旧固件走降级流程
@@ -5140,7 +5259,10 @@ async function syncAllPatternConfigs() {
     await new Promise((r) => setTimeout(r, 50));
   }
   if (fwVersionDetected === null) fwVersionDetected = '0.0.0';
-  if (firmwareSupportsWindowProto() && await syncAllPatternConfigsWindow()) return;
+  if (firmwareSupportsWindowProto()) {
+    await new Promise((r) => setTimeout(r, 1500));
+    if (await syncAllPatternConfigsWindow()) return;
+  }
   await syncAllPatternConfigsLegacy();
 }
 
@@ -5256,6 +5378,26 @@ async function sendPattern(quiet) {
   if (!hidDevice) {
     if (!quiet) setStatus(t('connectFirst'), 'error');
     return;
+  }
+  // v47.50: 上传前置——槽位缓存必须完整（读满 169 格或本地全量填充），否则先重读；
+  // 仍不完整则弹窗（再试/取消），绝不把残缺缓存写进键盘（曾致图案位被未知值覆盖清空/错位）
+  if (!patternGridComplete[currentSlot]) {
+    await readPatternSlot(currentSlot);
+  }
+  if (!patternGridComplete[currentSlot]) {
+    const retry = await animModal('patternUploadModal', 'patternUploadRetryBtn', 'patternUploadCancelBtn', 'patternUploadMsg', t('patternUploadMsg'));
+    if (retry) {
+      await readPatternSlot(currentSlot);
+      if (!patternGridComplete[currentSlot]) {
+        if (!quiet) setStatus(t('patternUploadFail'), 'error');
+        log(t('patternUploadFail'), true);
+        return;
+      }
+    } else {
+      if (!quiet) setStatus(t('patternUploadCancel'), 'error');
+      log(t('patternUploadCancel'), true);
+      return;
+    }
   }
   // v47.31: 不再清空日志栏——上传是高频操作,旧日志（含调试信息）不应被覆盖丢失；
   // 如需清空使用日志栏「清空」按钮
@@ -5458,13 +5600,15 @@ function importSettings(file) {
       if (data.lights) await applyLightsToKeyboard(data.lights);
       // 2. 图案 → 本地全槽位 + 逐槽位静默写入固件
       if (data.patterns) {
-        patternLocalDirty = true; // v47.40: 导入图案 = 编辑图案位图
         // v16: 新格式键 '0'-'7' 直通固件图案；旧格式键 '1'-'5' 对应固件图案 3-7（+2 迁移）
         const legacy = !data.patterns['0'];
         const mapKey = (i) => legacy ? String(i - 2) : String(i); // 新 i(0-7) → 源文件键
         for (let i = 0; i < 8; i++) {
           const src = mapKey(i);
-          if (data.patterns[src]) grids[String(i)] = data.patterns[src];
+          if (data.patterns[src]) {
+            grids[String(i)] = data.patterns[src];
+            markGridLocallyFilled(String(i)); // v47.50: 导入 = 本地真相，可直接上传
+          }
         }
         let savedSlot = (data.currentSlot && PATTERN_DATA[data.currentSlot]) ? data.currentSlot : '0';
         if (legacy && PATTERN_DATA[savedSlot]) savedSlot = String(Number(savedSlot) + 2); // 旧 '1'-'5' → '3'-'7'
@@ -7069,6 +7213,12 @@ const I18N = {
     dfuEraseOnly:'Clear Settings & Animations (firmware stays)',
     dfuEraseOnlyConfirm:'This clears ALL keyboard settings and animations (firmware is not touched). Continue?',
     dfuEraseOnlyDone:'Settings cleared — unplug and re-plug the keyboard to restart with clean settings.',
+    dfuDrvTitle:'Windows driver needed (WinUSB)',
+    dfuDrvHint:'On Windows, WebUSB needs the STM32 DFU device bound to the WinUSB driver. If Connect finds no device, download the driver package below (ST official signed driver — no Zadig needed), unzip and double-click the install script, then click Connect again.',
+    dfuDrvDownload:'Download Driver Package',
+    dfuDrvHint2:'Download started — unzip the package, double-click 安装驱动.bat (auto-elevates), then click Connect again.',
+    dfuDrvFail:'Download failed — grab sonic170_dfu_driver.zip from the repo, or install the STM32CubeProgrammer DFU driver.',
+    dfuDrvHint3:'No device found? Windows may need the WinUSB driver — see the driver section below.',
     dfuAddr:'Setting address...',
     dfuWriting:'Writing blocks: ',
     dfuFinal:'Finalizing...',
@@ -7124,6 +7274,13 @@ const I18N = {
     connectFail:'Connection failed: ',
     linkFail:'Connected but no reply from keyboard (echo timeout).',
     linkFailHint:'Communication with the keyboard failed — another app is likely holding the connection (e.g. VIA / VIA web). Close VIA completely, then reconnect. Also make sure the firmware is the latest build.',
+    cfgFailTitle:'Pattern Config Read Failed',
+    cfgFailMsg:'Reading the keyboard pattern settings timed out (the keyboard did not respond in time). This is usually the firmware writing to storage — the connection itself is fine.\n\nRetry re-reads the settings; Skip continues in compatibility mode (lights may flicker and the preview may be briefly inaccurate).',
+    cfgFailRetry:'Retry',
+    cfgFailSkip:'Skip',
+    cfgFailAutoRetry:'window cfg read failed, retrying...',
+    cfgFailLegacy:'Falling back to compatibility mode to read pattern settings.',
+    animSlotReadFailHint:'anim read failed — will auto-retransmit from backup if available',
     leds:' LEDs and saved to the keyboard.',
     ledsError:' LEDs: ',
     readFail:'Read failed (value_id ',
@@ -7161,8 +7318,13 @@ const I18N = {
     padSlotHint:'Editing pattern ',
     patternPendingHint:'unsaved changes — switching pattern discards them',
     patternReadOk:'Pattern slot read from keyboard.',
-    patternReadSkip:'Pattern read skipped (edited locally meanwhile).',
-    patternReadFail:' LEDs failed to read, skipped.',
+    patternReadRetry:'Pattern read incomplete, retrying...',
+    patternReadFail:' LEDs failed to read.',
+    patternUploadMsg:'Could not fully read the pattern bitmap from the keyboard (keyboard busy / timeout). Uploading an incomplete pattern would overwrite the keyboard with wrong data.\n\nRetry reading, or cancel the upload?',
+    patternUploadRetry:'Retry',
+    patternUploadCancel:'Cancel Upload',
+    patternUploadFail:'Upload cancelled — pattern cache incomplete.',
+    patternUploadTitle:'Pattern Read Incomplete',
     animDup:'Copy to Next', animClear:'Clear Frame',
     animThumbHint:'Hold Ctrl + click to multi-select frames for copy',
     animGrpFrame:'Frame', animGrpDraw:'Draw Tools', animGrpTransform:'Transform',
@@ -7287,6 +7449,12 @@ const I18N = {
     dfuEraseOnly:'清除设置与动画（固件不受影响）',
     dfuEraseOnlyConfirm:'这将清除键盘的所有设置和动画数据（固件不受影响）。继续？',
     dfuEraseOnlyDone:'设置已清除——拔插键盘即可重启，设置全新初始化。',
+    dfuDrvTitle:'Windows 需要 WinUSB 驱动',
+    dfuDrvHint:'在 Windows 上，WebUSB 需要 STM32 DFU 设备绑定 WinUSB 驱动。如果点击"连接"找不到设备，请先下载下方驱动包（ST 官方签名驱动，无需 Zadig），解压后双击安装脚本，再点击"连接"。',
+    dfuDrvDownload:'下载驱动包（一键安装）',
+    dfuDrvHint2:'驱动包已开始下载——解压后双击"安装驱动.bat"（自动申请管理员权限），完成后重新点击"连接 DFU 设备"。',
+    dfuDrvFail:'下载失败——请从仓库获取 sonic170_dfu_driver.zip，或安装 STM32CubeProgrammer 的 DFU 驱动。',
+    dfuDrvHint3:'找不到设备？Windows 可能需要安装 WinUSB 驱动——见下方驱动说明。',
     dfuAddr:'正在设置地址...',
     dfuWriting:'写入进度：',
     dfuFinal:'正在完成...',
@@ -7384,6 +7552,13 @@ const I18N = {
     connectFail:'连接失败：',
     linkFail:'已连接但键盘无回显（通信超时）。',
     linkFailHint:'与键盘通信失败——通常是其它程序占用了连接（如 VIA / VIA 网页版）。请完全退出 VIA 后重新连接；同时确认固件已烧录为最新版本（4.7.0）。',
+    cfgFailTitle:'读取图案配置失败',
+    cfgFailMsg:'读取键盘图案配置时传输超时（键盘未及时响应）。这通常是固件正在写入存储所致，连接本身没有问题。\n\n点「再试一次」重新读取；点「不试了」跳过并改用兼容模式继续（可能闪灯，预览可能短暂不准确）。',
+    cfgFailRetry:'再试一次',
+    cfgFailSkip:'不试了',
+    cfgFailAutoRetry:'窗口读取图案配置失败，正在自动重试…',
+    cfgFailLegacy:'已降级为兼容模式读取图案配置（可能闪灯，预览可能短暂不准确）。',
+    animSlotReadFailHint:'动画读取失败——如有本地备份将自动重传',
     leds:' 颗 LED 已保存到键盘。',
     ledsError:' 颗 LED：',
     readFail:'读取失败 (value_id ',
@@ -7421,8 +7596,13 @@ const I18N = {
     padSlotHint:'正在编辑图案 ',
     patternPendingHint:'有未上传到键盘的修改，切换图案将舍弃',
     patternReadOk:'已从键盘读取图案槽位。',
-    patternReadSkip:'图案读取已跳过（期间本地已编辑）。',
-    patternReadFail:' 颗 LED 读取失败，已跳过。',
+    patternReadRetry:'图案读取不完整，重试中…',
+    patternReadFail:' 颗 LED 读取失败。',
+    patternUploadMsg:'无法完整读取键盘上的图案位图（键盘忙/超时）。用不完整的图案上传会用错误数据覆盖键盘。\n\n再试一次读取，还是取消上传？',
+    patternUploadRetry:'再试一次',
+    patternUploadCancel:'取消上传',
+    patternUploadFail:'上传已取消——图案缓存不完整。',
+    patternUploadTitle:'图案读取不完整',
     animDup:'复制到下一帧', animClear:'清空帧',
     animThumbHint:'按住 Ctrl 点击可多选复制帧',
     animGrpFrame:'帧操作', animGrpDraw:'绘制工具', animGrpTransform:'变换',
@@ -7733,6 +7913,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (animSlotBackup[curPat]) { delete animSlotBackup[curPat]; saveAnimSlotBackup(); }
       // v47.39: 位图重置为出厂默认（自定义图案 3-7 = 全亮，固件 default_pad_pattern_mask bit3-7=1）
       const curSlot = String(curPat);
+      markGridLocallyFilled(curSlot); // v47.50: 全亮 = 完整本地真相，上传不重读
       const rows = PATTERN_DATA[curSlot];
       if (rows) rows.forEach((r) => r.cells.forEach((c) => setCell(curSlot, r.row, c.col, 1)));
       refreshAllCellVisuals();
@@ -29140,6 +29321,30 @@ window.addEventListener('DOMContentLoaded', () => {
   </div>
 </div>
 
+<!-- v47.46: 图案配置读取失败——用户感知弹窗（再试一次 / 不试了降级兼容模式） -->
+<div class="modal-overlay" id="cfgFailModal" hidden>
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="cfgFailTitle">
+    <h3 id="cfgFailTitle" data-i18n="cfgFailTitle">Pattern Config Read Failed</h3>
+    <p id="cfgFailMsg" data-i18n="cfgFailMsg" style="white-space:pre-line"></p>
+    <div class="modal-btns">
+      <button id="cfgFailRetryBtn" class="primary" data-i18n="cfgFailRetry">Retry</button>
+      <button id="cfgFailSkipBtn" data-i18n="cfgFailSkip">Skip</button>
+    </div>
+  </div>
+</div>
+
+<!-- v47.50: 图案上传前置失败——缓存不完整，禁止写坏键盘（再试读取 / 取消上传） -->
+<div class="modal-overlay" id="patternUploadModal" hidden>
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="patternUploadTitle">
+    <h3 id="patternUploadTitle" data-i18n="patternUploadTitle">Pattern Read Incomplete</h3>
+    <p id="patternUploadMsg" data-i18n="patternUploadMsg" style="white-space:pre-line"></p>
+    <div class="modal-btns">
+      <button id="patternUploadRetryBtn" class="primary" data-i18n="patternUploadRetry">Retry</button>
+      <button id="patternUploadCancelBtn" data-i18n="patternUploadCancel">Cancel Upload</button>
+    </div>
+  </div>
+</div>
+
 <!-- v47.1: DFU 固件烧录（WebUSB + STM32 DFU；全片擦除 + 写入，解决 backing 残留） -->
 <div class="modal-overlay" id="dfuModal" hidden>
   <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="dfuTitle">
@@ -29149,6 +29354,14 @@ window.addEventListener('DOMContentLoaded', () => {
       <li data-i18n="dfuStep2">Click <b>Connect</b> and pick the "STM32 BOOTLOADER" device in the dialog.</li>
       <li data-i18n="dfuStep3">Choose a <b>.bin firmware file</b> and click <b>Flash</b>. The whole flash chip is erased first — all settings and animations will be reset.</li>
     </ol>
+    <div class="dfu-driver-block" id="dfuDriverBlock" hidden>
+      <div class="anim-group-title" data-i18n="dfuDrvTitle">Windows driver needed (WinUSB)</div>
+      <p class="dfu-driver-text" data-i18n="dfuDrvHint">On Windows, WebUSB needs the STM32 DFU device bound to the WinUSB driver. If Connect finds no device, download the driver package below (ST official signed driver — no Zadig needed), unzip and double-click the install script, then click Connect again.</p>
+      <div class="via-dl-buttons">
+        <button id="dfuDrvBtn" data-i18n="dfuDrvDownload">Download Driver Package</button>
+      </div>
+      <div id="dfuDrvStatus" class="hint-text"></div>
+    </div>
     <div class="via-dl-buttons">
       <button id="dfuConnectBtn" data-i18n="dfuConnect">Connect DFU Device</button>
       <button id="dfuFileBtn" data-i18n="dfuFile">Choose .bin File</button>
