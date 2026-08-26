@@ -16,8 +16,8 @@
 | 📄 文件 | ℹ️ 说明 |
 |---|---|
 | `sonic170v2-rgb-control.html` | 网页编辑器（单文件、零依赖、WebHID/WebUSB、可离线使用） |
-| `SONIC170_hotswap_v4.8.1.bin` | 固件——热插拔版 |
-| `SONIC170_solder_v4.8.1.bin` | 固件——焊接版 |
+| `SONIC170_hotswap_v4.9.2_20260825_1412.bin` | 固件——热插拔版 |
+| `SONIC170_solder_v4.9.3_20260826_1822.bin` | 固件——焊接版 |
 | `sonic170_via_hotswap.json` | VIA 定义——热插拔版 |
 | `sonic170_via_solder.json` | VIA 定义——焊接版 |
 

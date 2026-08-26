@@ -21,7 +21,7 @@
 
 **当前状态(2026-08-25)**:
 - 固件 **4.9.1**(hotswap 63,828B / solder 62,760B;**4.9.1 动画保存修复**:保存目标槽 save_slot 与 active_slot 解耦,切图案不再中断/清空 EEPROM 保存(finish_pending_save 换槽前同步完成未竟保存,~100-300ms 仅上传后 1s 内切槽触发);chunk 32→256B(log 记录少 8 倍,consolidation 压力大降);移除 v4.8.2 abort_save_and_clear_slot 清头部逻辑(网页 v47.41 起已加 CRC 拒读,理由不成立;旧逻辑导致上传后切图案 → EEPROM 动画永久丢失 → 重连读不到动画只 RAM 播);4.9.0 cfg 区窗口协议:value_id 44=元信息(layout_version+cfg_size+写拒绝计数)/45=窗口读/46=窗口写,白名单仅 pad_pattern_cfg 区 56B,读写校验布局版本(RGB_CONTROL_LAYOUT_VERSION=1),写后固件做 mode 回落校验+激活图案逐字段投影)
-- 网页 **v47.51**(v47.51 更新检查 no source 修复:`Promise.race` → `Promise.any`——race 是"最快 settle 者胜",Gitee raw 403 防盗链必败且常比 jsDelivr 快毫秒级 → 整个三源探测误报 no source 降级直链;any 取第一个成功源,三源全败才 no source;新增 scripts/auto-release.ps1 自动发布闭环:post-commit hook 检测 4 产物(hotswap/solder bin + 2 json)git 提交时间 vs 最新 release → 有新自动 push + 建 release 传 4 资产 + 同步 latest.json 推 origin/gitee,依赖 GITHUB_PAT 环境变量);v47.50 图案位图上传保护:readPatternSlot 改合并语义(读回不回填"读取期间用户画过"的格,替代 v47.30/40 整体丢弃)+ 失败自动重读 1 次(500ms 避开忙窗口)+ `patternGridComplete` 完整性标志——上传前置强制重读,仍不完整弹窗「再试一次/取消」,绝不把残缺缓存写进键盘(修复"切图案后图案位被未知值覆盖清空/错位",读失败/画读竞态双链);v47.49 DFU 弹窗 Windows 驱动助手(WinUSB,免 Zadig);v47.48 读槽失败明确提示(动画持久化缺失/损坏,备份自动重传);v47.47 窗口读首片延迟 1.5s 避开连接后 EEPROM consolidation 忙窗口;v47.46 传输健壮性:回显校验加 value_id(bytes>2 时)+ 窗口读 3 次重试(间隔 100ms)+ 全量读取失败自动重试 1 次 → 仍失败弹窗「再试一次/不试了」用户感知,不再静默降级 legacy——修复固件忙窗口致 (54,2) 单片超时 → legacy 56 条突发读迟到回显错配 → 缓存全黑 → 上传把黑写进 EEPROM 的连锁)
+- 网页 **v47.61**(v47.61 **内嵌固件滞后修复**:下载按钮默认走内嵌 base64 兜底(FW_DL_B64/FW_DL_B64_SOLDER),4.9.2 发布时漏同步内嵌 → 刷新后下载仍是 4.8.2(检查更新的 dlOverride 是内存态,刷新即失)——本次内嵌 hotswap 4.9.2/solder 4.9.3(base64 解码逐字节校验一致),EMBED_FW_VERSION '4.9.2',下载名/按钮文字/README 同步,latest.json 修复:files 里 solder 4.9.2 指向已删除文件(根目录实际 4.9.3)→ 404,改 version 4.9.3 + files 4.9.3;踩坑:4256 行 FW_DL_B64 原无结尾分号(字符串替换 MISS,必须用正则 [^']* 替换),FW_DL_B64_SOLDER 原双分号残留;**教训:固件发布后必须同步更新网页内嵌 base64 + EMBED_FW_VERSION + 下载名 + 按钮文字 + latest.json 五处,建议写入 auto-release.ps1 校验**);v47.60 网页工具自更新:检查更新遗漏网页本身修复——三源探测网页自身 html(GitHub API contents 实时 / jsDelivr CDN / Gitee raw,allSettled 按版本最高者胜),发现新版:主路径 `document.open/write/close` **原地整页替换**(文档就绪后为完整替换,Chrome 实测新文档脚本正常执行,URL 不变无需刷新,真正无感;解析早期调用 open 会被追加而非替换——引导脚本必须等 DOMContentLoaded);降级路径:localStorage 暂存(1.86MB 在 5MB 限额内,约 3.7MB UTF-16)+ reload,`<head>` 引导脚本 DOMContentLoaded 后替换,先删键防循环+比对版本防回退;再降级:存储超限自动下载新版文件覆盖;已最新则在日志前加「网页工具已是最新 vX」注记,固件流程不变;版本号来源单一化:新常量 PAGE_VERSION 从 `<title>` 提取,与 appVersionBadge 同源);v47.52 更新检查"版本最高者胜":`Promise.any`→`Promise.allSettled` 三源全取后按 tag 版本号排序取最高——jsDelivr CDN 缓存 12h 旧清单时它总是第一个成功 → 永远显示旧版(实测:latest.json 已更新 4.9.2 但 jsDelivr 缓存返回 4.8.1 且指向已删文件 404);fetchT 加 cache:'no-store' 防浏览器 HTTP 缓存复用旧响应);v47.51 更新检查 no source 修复:`Promise.race` → `Promise.any`——race 是"最快 settle 者胜",Gitee raw 403 防盗链必败且常比 jsDelivr 快毫秒级 → 整个三源探测误报 no source 降级直链;any 取第一个成功源,三源全败才 no source;新增 scripts/auto-release.ps1 自动发布闭环:post-commit hook 检测 4 产物(hotswap/solder bin + 2 json)git 提交时间 vs 最新 release → 有新自动 push + 建 release 传 4 资产 + 同步 latest.json 推 origin/gitee,依赖 GITHUB_PAT 环境变量);v47.50 图案位图上传保护:readPatternSlot 改合并语义(读回不回填"读取期间用户画过"的格,替代 v47.30/40 整体丢弃)+ 失败自动重读 1 次(500ms 避开忙窗口)+ `patternGridComplete` 完整性标志——上传前置强制重读,仍不完整弹窗「再试一次/取消」,绝不把残缺缓存写进键盘(修复"切图案后图案位被未知值覆盖清空/错位",读失败/画读竞态双链);v47.49 DFU 弹窗 Windows 驱动助手(WinUSB,免 Zadig);v47.48 读槽失败明确提示(动画持久化缺失/损坏,备份自动重传);v47.47 窗口读首片延迟 1.5s 避开连接后 EEPROM consolidation 忙窗口;v47.46 传输健壮性:回显校验加 value_id(bytes>2 时)+ 窗口读 3 次重试(间隔 100ms)+ 全量读取失败自动重试 1 次 → 仍失败弹窗「再试一次/不试了」用户感知,不再静默降级 legacy——修复固件忙窗口致 (54,2) 单片超时 → legacy 56 条突发读迟到回显错配 → 缓存全黑 → 上传把黑写进 EEPROM 的连锁)
 - 磨损评估:正常使用 40 年+,不会变砖(bootloader 不可擦除 + 网页 DFU 可恢复)
 
 ---
@@ -140,7 +140,7 @@ Flash 总容量 512KB(**编译期常量**)/固件占用(链接符号 `__textdata
 12. **网页单文件**:开始核对大小/锚点,结束记录
 13. **固件版本号纪律**:每次固件改动必须 bump rules.mk FIRMWARE_VERSION(两版一致)——功能 minor+1、修复 patch+1
 14. **单板修复必须同步姊妹板**(v46.12 教训:solder 缺修复 → 上传卡死)
-15. **网页版本号纪律(v47.1 起)**:每次网页代码任何更新 bump 版本号(十进制 patch+1,每 10 次主版本+1、patch 归 0)——同步更新 `<title>` + `appVersionBadge`。**当前 v47.51**
+15. **网页版本号纪律(v47.1 起)**:每次网页代码任何更新 bump 版本号(十进制 patch+1,每 10 次主版本+1、patch 归 0)——同步更新 `<title>` + `appVersionBadge`。**当前 v47.61**
 
 ---
 
@@ -162,7 +162,7 @@ Flash 总容量 512KB(**编译期常量**)/固件占用(链接符号 `__textdata
 | 杂物清理 | solder 多余 `sonic170_via_hotswap.json`、hotswap `keymap.c.bak`、solder keymap 首行 BOM 无害 |
 
 **注意事项(下轮必记)**:
-- 网页必须 file:// 打开 + Ctrl+F5 强刷(标题栏应显示 v47.51)
+- 网页必须 file:// 打开 + Ctrl+F5 强刷(标题栏应显示 v47.61)
 - **v47.50 图案位图完整性契约**:`patternGridComplete[slot]` = 缓存完整(读满 169 格 failed==0,或本地全量填充 markGridLocallyFilled:清空/全亮/反色/旋转/平移/导入/恢复默认/清除动画);`paintedSinceRead[slot]` = 读取开始后用户画过的格(读回合并保护,不回填);sendPattern 前置 `if (!patternGridComplete[currentSlot]) await readPatternSlot(currentSlot)` 仍不完整 → patternUploadModal 弹窗「再试一次/取消上传」——**残缺缓存绝不写键盘**;readPatternSlot 合并语义替代 v47.30/40 discard(两处补丁叠加的语义债);失败自动整槽重读 1 次(500ms 避开 consolidation 忙窗口);连接时清 patternGridComplete(重读键盘)
 - **v4.9.0 cfg 窗口协议契约**:偏移 = cfg 区相对偏移(图案 i × 7 + 字段: hue0/sat1/val2/mode3/speed4/animCell5/animMatrix6);`RGB_CONTROL_LAYOUT_VERSION=1`(固件 rgb_control.h + 网页 CFG_LAYOUT_VERSION 双端,布局变更双端同步 +1);窗口写后固件自动 mode 回落(非动画槽 31→0)+ 激活图案逐字段投影(不触发雨滴重 init/动画槽激活);46 写 ≤25B/条;动画上传期间禁 45/46(v7 中止规则);网页与 VIA 不能同时操作(共享 channel 0)
 - **v4.9.0 以后不动固件的边界**:图案配置(cfg 区)读写零改动;加 cfg 字段 = 网页单端同步偏移表;加全局字段/新存储区段仍需固件(评估存储预算:64KB 逻辑区已用 ~54KB,剩 ~10KB,超预算=backing 扩容=全片擦除灾难)
@@ -173,7 +173,7 @@ Flash 总容量 512KB(**编译期常量**)/固件占用(链接符号 `__textdata
 - **v47.43 sendReport 超时保护**:`hidDevice.sendReport` 挂起(固件 consolidation 等 USB 忙)时 7s 超时放弃 + 清 pendingReport,防挂起堆积/迟到回显错配导致 enqueue 8s 超时后队列持续不健康;动画槽图案读取失败(队列超时)3s 后自动重试一次恢复预览
 - **v47.42 按槽动画备份**:上传动画自动写入 localStorage `sonic170_anim_slot_backup`(清除动画时删除);重连时固件槽空且有备份 → checkAnimAutoRetrans 自动重传(按当前图案取备份,不依赖用户库 ANIM_CUR_KEY)
 - **v47.42 固件版本降级**:fwVersionDetected(连接时 getDevInfo2 记录);firmwareSupportsDualSlot() 判断 <4.8.2 不读槽 0(旧固件 bit15 冲突,槽 0 不可达);syncKeyboardToPageInner 等待版本检测(3s 超时按未知处理)
-- **网页内嵌固件 bin 已更新 4.8.2**(FW_DL_B64/FW_DL_B64_SOLDER + 下载名 + EMBED_FW_VERSION 同步);固件更新后需同步更新内嵌 bin(生成脚本:base64 编码 + 解码长度校验)
+- **网页内嵌固件 bin 已更新 4.9.2/4.9.3**(FW_DL_B64=hotswap 4.9.2 / FW_DL_B64_SOLDER=solder 4.9.3 + 下载名 + EMBED_FW_VERSION='4.9.2' 同步;生成脚本:base64 编码 + 解码长度校验;注意两行历史格式坑:FW_DL_B64 行无结尾分号、FW_DL_B64_SOLDER 行原双分号残留,替换必须用正则);**固件更新后必须同步:内嵌 base64 + EMBED_FW_VERSION + 下载名 + 按钮文字(HTML fallback + i18n) + latest.json + README,漏任一处即"下载按钮旧版"bug**
 - v47.41 双槽动画协同:value_id 41 块号编码 `block|0x4000|(slot<<15)`(bit14=EEPROM 标志、bit15=槽号),固件解码必须同步;clearAnimBtn 必须先 setPadPatternIndex(curPat) 再 VID_ANIM_CLEAR;readAnimSlot 有 CRC 校验(损坏数据拒收)
 - **enqueue 嵌套死锁教训(v47.32)**:enqueue 任务内禁止再调 enqueue(内层等外层 hidQueue、外层等内层 → 8s 超时打破,连带队列任务集体超时)——入队必须单层,如 `enqueue(getDevInfo2)` 且 getDevInfo2 内部不得 enqueue
 - withTimeout 定时器必须在 race 后 clearTimeout,否则任务完成后仍误报超时日志

@@ -16,8 +16,8 @@ This repository contains everything you need to configure and reflash the SONIC-
 | 📄 File | ℹ️ Description |
 |---|---|
 | `sonic170v2-rgb-control.html` | Web editor — single file, zero dependencies, offline-capable (WebHID/WebUSB) |
-| `SONIC170_hotswap_v4.8.1.bin` | Firmware — hot-swap edition |
-| `SONIC170_solder_v4.8.1.bin` | Firmware — soldered edition |
+| `SONIC170_hotswap_v4.9.2_20260825_1412.bin` | Firmware — hot-swap edition |
+| `SONIC170_solder_v4.9.3_20260826_1822.bin` | Firmware — soldered edition |
 | `sonic170_via_hotswap.json` | VIA definition — hot-swap edition |
 | `sonic170_via_solder.json` | VIA definition — soldered edition |
 
