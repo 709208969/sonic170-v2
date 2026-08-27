@@ -1,8 +1,8 @@
 {
-    "version":  "4.9.2",
+    "version":  "4.9.5",
     "files":  [
-                  "SONIC170_hotswap_v4.9.2_20260825_1412.bin",
-                  "SONIC170_solder_v4.9.3_20260826_1822.bin",
+                  "SONIC170_hotswap_v4.9.5_20260827_1837.bin",
+                  "SONIC170_solder_v4.9.5_20260827_1839.bin",
                   "sonic170_via_hotswap.json",
                   "sonic170_via_solder.json",
                   "sonic170_dfu_driver.zip"
