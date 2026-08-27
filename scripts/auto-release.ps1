@@ -121,4 +121,14 @@ if ($LASTEXITCODE -ne 0) { Write-Host '[auto-release] gitee push 失败（忽略
 Remove-Item Env:SONIC_AUTO_RELEASE_SKIP
 Remove-Item Env:GCM_INTERACTIVE
 
+# 9. jsDelivr purge——发布即刷新 CDN（@main 路径默认缓存 12h，不 purge 则国内用户
+#    12h 内检测不到网页/固件更新；公开 purge API 无需 token）
+try {
+  $PurgeBody = @{ path = @("/gh/$Owner/$Repo@main/sonic170v2-rgb-control.html", "/gh/$Owner/$Repo@main/latest.json") } | ConvertTo-Json
+  $PurgeResp = Invoke-RestMethod -Method Post -Uri 'https://purge.jsdelivr.net/' -ContentType 'application/json' -Body $PurgeBody -TimeoutSec 30
+  Write-Host "[auto-release] jsDelivr purge 已提交: $($PurgeResp | ConvertTo-Json -Compress)"
+} catch {
+  Write-Host "[auto-release] jsDelivr purge 失败（忽略）: $_"
+}
+
 Write-Host "[auto-release] 完成：$Tag 已发布 + latest.json 已同步"
