@@ -1,6 +1,6 @@
 # sonic170 自动发布脚本
 # 用途：post-commit 钩子调用。检测 4 个固件产物（hotswap bin / solder bin / 两个 via json）
-#       是否比 GitHub 最新 release 新 —— 有新则：push → 创建/更新 release（4 资产）→
+#       是否比 GitHub 最新 release 新 —— 有新则：push → 创建/更新 release（4 产物 + dfu 驱动包 zip = 5 资产）→
 #       同步 latest.json（jsDelivr 源）→ push origin + gitee 镜像。
 # 依赖：环境变量 GITHUB_PAT（GitHub API token，需 repo 权限）
 # PS5.1 坑：ErrorActionPreference=Stop 时 native 命令（git/curl）写 stderr 会抛 NativeCommandError。
@@ -94,17 +94,19 @@ if ($Latest -and $Latest.tag_name -eq $Tag) {
   $RelId = $Created.id
 }
 
-# 7. 上传 4 个资产
-foreach ($f in $Files) {
+# 7. 上传 5 个资产（4 产物 + dfu 驱动包）
+$Upload = @($Files)
+$Zip = Get-ChildItem -Path $Root -Filter 'sonic170_dfu_driver.zip' -File | Select-Object -First 1
+if ($Zip) { $Upload += $Zip }
+foreach ($f in $Upload) {
   curl.exe -s -X POST -H "Authorization: Bearer $Pat" -H "Content-Type: application/octet-stream" `
     --data-binary "@$($f.FullName)" "$Up/releases/$RelId/assets?name=$($f.Name)" 2>$null | Out-Null
   if ($LASTEXITCODE -ne 0) { Write-Host "  asset 上传失败: $($f.Name)" }
   else { Write-Host "  asset: $($f.Name) ($($f.Length) B)" }
 }
 
-# 8. 同步 latest.json（4 文件 + dfu 驱动包，若存在）
+# 8. 同步 latest.json（5 文件：4 产物 + dfu 驱动包）
 $List = @($Files | ForEach-Object { $_.Name })
-$Zip = Get-ChildItem -Path $Root -Filter 'sonic170_dfu_driver.zip' -File | Select-Object -First 1
 if ($Zip) { $List += $Zip.Name }
 $Lj = @{ version = $Ver; files = $List } | ConvertTo-Json
 [System.IO.File]::WriteAllText("$Root\latest.json", $Lj, (New-Object System.Text.UTF8Encoding($false)))
