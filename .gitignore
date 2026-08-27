@@ -1,2 +1,5 @@
 # 自动发布脚本运行日志
 scripts/auto-release.log
+
+# 本地交接手册（仅本地使用，不上传 GitHub）
+AGENTS.md
