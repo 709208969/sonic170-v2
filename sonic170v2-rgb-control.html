@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LED Panel Pattern Designer — sonic170 (v47.70)</title>
+<title>LED Panel Pattern Designer — sonic170 (v47.71)</title>
 <style>
   /* ================================================================
      Glassmorphism Design System — "Frosted Glass + Dark Gradient"
@@ -1381,7 +1381,7 @@
     <div class="header-text">
       <h1 data-i18n="title">SONIC-170 v2灯光编辑器</h1>
       <div class="app-subtitle" data-i18n="subtitle">powered by kindlestar</div>
-      <div class="app-subtitle" id="appVersionBadge" style="font-size:.7rem;opacity:.75">v47.70</div>
+      <div class="app-subtitle" id="appVersionBadge" style="font-size:.7rem;opacity:.75">v47.71</div>
     </div>
     <div class="theme-toggle" role="group" aria-label="Theme">
       <button type="button" data-theme-btn="dawn" data-i18n="themeDawn" title="">
@@ -8102,7 +8102,9 @@ window.addEventListener('DOMContentLoaded', () => {
   function zoneName(z) { return [t('padTitle'), t('sideTitle'), t('capsTitle')][z]; }
   function bindZone(z) {
     const nm = ['pad','side','caps'][z];
-    const zn = zoneName(z);
+    // v47.70: zn 延迟求值——旧代码 const zn=zoneName(z) 在页面加载(currentLang='zh')时
+    // 固化中文名，切英文后日志仍显示「Pad 灯板/侧边灯条」；改为函数调用时取当前语言
+    const zn = () => zoneName(z);
     // v2.1: Caps 已取消独立开关（模式选择即开关），仅 Pad/Side 保留 EnableToggle
     const enableToggle = document.getElementById(nm + 'EnableToggle');
     if (enableToggle) {
@@ -8114,7 +8116,7 @@ window.addEventListener('DOMContentLoaded', () => {
         // v47.29: 实时同步关闭时仅本地预览
         if (liveSyncEnabled) fn(on?1:0);
         updateStripPreview();
-        log(zn + (on ? t('logOn') : t('logOff')));
+        log(zn() + (on ? t('logOn') : t('logOff')));
       });
     }
     if (nm === 'pad') {
@@ -8207,7 +8209,7 @@ window.addEventListener('DOMContentLoaded', () => {
         if (liveSyncEnabled) setPadMode(newMode);
         if (z === 0) touchPatternCfg(curPat); // v47.43: 修改同步更新暂存区（待应用标记）
         updateAllLocks();
-        log(zn + t('logMode') + newMode);
+        log(zn() + t('logMode') + newMode);
       });
     } else {
       document.getElementById(nm + 'Mode').addEventListener('change', (e) => {
@@ -8215,19 +8217,20 @@ window.addEventListener('DOMContentLoaded', () => {
         // v47.29: 实时同步关闭时仅本地预览
         if (liveSyncEnabled) (z===1?setSideLedMode:setCapsMode)(Number(e.target.value));
         updateTypingLock(z);
-        log(zn + t('logMode') + Number(e.target.value));
+        log(zn() + t('logMode') + Number(e.target.value));
       });
     }
     [
-      [nm+'Brightness', z===0?setPadBrightness:z===1?setSideLedBrightness:setCapsBrightness, t('brightness')],
-      [nm+'Speed', z===0?setPadSpeed:z===1?setSideLedSpeed:setCapsSpeed, t('speed')],
+      // v47.70: label 存 i18n key 而非 t() 结果——数组字面量定义时求值会固化加载时语言
+      [nm+'Brightness', z===0?setPadBrightness:z===1?setSideLedBrightness:setCapsBrightness, 'brightness'],
+      [nm+'Speed', z===0?setPadSpeed:z===1?setSideLedSpeed:setCapsSpeed, 'speed'],
     ].forEach(([id, fn, label]) => {
       const el = document.getElementById(id);
       if (!el) return;
       el.addEventListener('input', (e) => {
         document.getElementById(id+'Val').textContent = e.target.value;
       });
-      const debouncedFn = debounce((v) => { userModified = true; if (liveSyncEnabled) fn(v); if (z === 0) touchPatternCfg(Number(document.getElementById('padPattern').value)); log(zn + ' ' + label + ' = ' + v); });
+      const debouncedFn = debounce((v) => { userModified = true; if (liveSyncEnabled) fn(v); if (z === 0) touchPatternCfg(Number(document.getElementById('padPattern').value)); log(zn() + ' ' + t(label) + ' = ' + v); });
       el.addEventListener('change', (e) => debouncedFn(Number(e.target.value)));
     });
     // Color
@@ -8239,13 +8242,13 @@ window.addEventListener('DOMContentLoaded', () => {
       if (liveSyncEnabled) colorFn(hue, sat);
       if (z === 0) touchPatternCfg(Number(document.getElementById('padPattern').value)); // v47.43
       updateStripPreview();
-      log(zn + ' ' + t('color') + ' = ' + e.target.value);
+      log(zn() + ' ' + t('color') + ' = ' + e.target.value);
     });
     // Typing
     document.getElementById(nm+'TypingMode').addEventListener('change', (e) => {
       userModified = true; // v47.30
       if (liveSyncEnabled) setTypingMode(z, Number(e.target.value));
-      log(zn + t('logTypingMode') + Number(e.target.value));
+      log(zn() + t('logTypingMode') + Number(e.target.value));
     });
     // v44.3: 打字色已取消（颜色统一由灯效模式颜色控制）
   }
