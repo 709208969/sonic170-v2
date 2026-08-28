@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LED Panel Pattern Designer — sonic170 (v47.74)</title>
+<title>LED Panel Pattern Designer — sonic170 (v47.75)</title>
 <style>
   /* ================================================================
      Glassmorphism Design System — "Frosted Glass + Dark Gradient"
@@ -1367,7 +1367,7 @@
     <div class="header-text">
       <h1 data-i18n="title">SONIC-170 v2灯光编辑器</h1>
       <div class="app-subtitle" data-i18n="subtitle">powered by kindlestar</div>
-      <div class="app-subtitle" id="appVersionBadge" style="font-size:.7rem;opacity:.75">v47.74</div>
+      <div class="app-subtitle" id="appVersionBadge" style="font-size:.7rem;opacity:.75">v47.75</div>
     </div>
     <div class="theme-toggle" role="group" aria-label="Theme">
       <button type="button" data-theme-btn="dawn" data-i18n="themeDawn" title="">
@@ -5141,13 +5141,14 @@ function guardAnimSlotEdit() {
 }
 
 // v47.44: 图案提示（含未上传修改提示）——"正在编辑图案 N"，若当前图案有待应用修改则追加提示
+// v47.75: 默认图案（0-2）开放编辑——固件 v16 起 8 槽全可写,旧 v2.1 只读防呆移除;
+// 误编辑可由「恢复出厂」还原（restoreAllDefaults 将 0-2 恢复出厂图案/3-7 清空）
 function updatePatternHint() {
   const hint = document.getElementById('padPatternHint');
   if (!hint) return;
   const idx = Number(document.getElementById('padPattern').value);
-  const isDefault = idx < 3;
   const isAnimSlot = ANIM_SLOT_PATTERNS.includes(idx);
-  let text = isAnimSlot ? t('padAnimSlotHint') : (isDefault ? t('padDefaultReadOnly') : t('padSlotHint') + idx);
+  let text = isAnimSlot ? t('padAnimSlotHint') : t('padSlotHint') + idx;
   if (patternCfgPending[idx]) text += ' — ' + t('patternPendingHint');
   hint.textContent = text;
 }
@@ -5156,11 +5157,8 @@ function syncPadPatternLink() {
   const padSel = document.getElementById('padPattern');
   const idx = Number(padSel.value);
   const toolbar = document.querySelector('[data-panel="pattern"] .toolbar');
-  // v2.1: 默认图案（0-2）只读——选中时锁定编辑（避免误编辑出厂图案）
-  // v47: 动画槽（3/4）不锁——无动画时即普通图案可直接编辑
-  const isDefault = idx < 3;
+  // v47.75: 默认图案（0-2）不再锁定——开放编辑（恢复出厂可还原）
   updatePatternHint(); // v47.44: 含未上传修改提示
-  if (toolbar) toolbar.classList.toggle('locked', isDefault);
   if (currentSlot !== String(idx)) {
     currentSlot = String(idx);
     renderGrid();
