@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LED Panel Pattern Designer — sonic170 (v47.71)</title>
+<title>LED Panel Pattern Designer — sonic170 (v47.72)</title>
 <style>
   /* ================================================================
      Glassmorphism Design System — "Frosted Glass + Dark Gradient"
@@ -1381,7 +1381,7 @@
     <div class="header-text">
       <h1 data-i18n="title">SONIC-170 v2灯光编辑器</h1>
       <div class="app-subtitle" data-i18n="subtitle">powered by kindlestar</div>
-      <div class="app-subtitle" id="appVersionBadge" style="font-size:.7rem;opacity:.75">v47.71</div>
+      <div class="app-subtitle" id="appVersionBadge" style="font-size:.7rem;opacity:.75">v47.72</div>
     </div>
     <div class="theme-toggle" role="group" aria-label="Theme">
       <button type="button" data-theme-btn="dawn" data-i18n="themeDawn" title="">
@@ -1498,7 +1498,7 @@
           </div>
           <div class="effect-row-inline">
             <label data-i18n="color">Color</label>
-            <input type="color" id="padColor" value="#ff0000">
+            <input type="color" id="padColor" value="#0066ff">
           </div>
           <div class="effect-row-inline">
             <label data-i18n="speed">Speed</label>
@@ -1592,7 +1592,7 @@
           </div>
           <div class="effect-row-inline">
             <label data-i18n="color">Color</label>
-            <input type="color" id="sideColor" value="#ff0000">
+            <input type="color" id="sideColor" value="#0066ff">
           </div>
           <div class="effect-row-inline">
             <label data-i18n="speed">Speed</label>
@@ -2805,11 +2805,11 @@ function applyDefaultConfigLocal() {
   g('padDirectionToggle').classList.remove('on');
   g('padMode').value = '0'; // 单色
   g('padBrightness').value = 100; g('padBrightnessVal').textContent = 100;
-  g('padColor').value = hueSatToHex(0, 255);
+  g('padColor').value = hueSatToHex(153, 255);
   g('padSpeed').value = 80; g('padSpeedVal').textContent = 80;
   g('sideMode').value = '0'; // 单色
   g('sideBrightness').value = 100; g('sideBrightnessVal').textContent = 100;
-  g('sideColor').value = hueSatToHex(0, 255);
+  g('sideColor').value = hueSatToHex(153, 255);
   g('sideSpeed').value = 80; g('sideSpeedVal').textContent = 80;
   g('capsMode').value = '30'; // 关闭（30 专用值）
   g('capsBrightness').value = 200; g('capsBrightnessVal').textContent = 200;
@@ -8013,7 +8013,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // ---- 图案编辑器 ----
   document.getElementById('restoreBtn').addEventListener('click', restoreAllDefaults);
   // v47: 清除动画槽（当前图案 3/4 的动画内容；清除后该图案变普通图案）
-  // v47.39: 清除动画后该图案**重置为出厂默认**（位图全亮 + 红色单色配置）并上传到键盘——
+  // v47.39: 清除动画后该图案**重置为出厂默认**（位图全亮 + 蓝色单色配置）并上传到键盘——
   // 仅影响当前图案（位图按 bit 写 + per-pattern 配置），不动其它图案槽与全局设置（master/side/caps）
   document.getElementById('clearAnimBtn').addEventListener('click', async () => {
     const curPat = Number(document.getElementById('padPattern').value);
@@ -8044,11 +8044,11 @@ window.addEventListener('DOMContentLoaded', () => {
       const rows = PATTERN_DATA[curSlot];
       if (rows) rows.forEach((r) => r.cells.forEach((c) => setCell(curSlot, r.row, c.col, 1)));
       refreshAllCellVisuals();
-      // 控件：当前图案 per-pattern 配置恢复出厂默认（模式 0 单色 / 亮度 100 / 红 / 速度 80）
+      // 控件：当前图案 per-pattern 配置恢复出厂默认（模式 0 单色 / 亮度 100 / 蓝 / 速度 80）
       document.getElementById('padMode').value = '0';
       document.getElementById('padBrightness').value = 100;
       document.getElementById('padBrightnessVal').textContent = 100;
-      document.getElementById('padColor').value = hueSatToHex(0, 255);
+      document.getElementById('padColor').value = hueSatToHex(153, 255);
       document.getElementById('padSpeed').value = 80;
       document.getElementById('padSpeedVal').textContent = 80;
       prevPadMode = 0;
@@ -8059,7 +8059,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (!(await writePatternCfg(curPat, clearCfg))) {
         await enqueue(() => sendViaCommand(CMD_CUSTOM_SET_VALUE, CHANNEL_CUSTOM, VID_PAD_MODE, 0));
         await enqueue(() => sendViaCommand(CMD_CUSTOM_SET_VALUE, CHANNEL_CUSTOM, VID_PAD_BRIGHTNESS, 100));
-        const pc = rgb2hsv.apply(null, hexToRGBArr(hueSatToHex(0, 255)));
+        const pc = rgb2hsv.apply(null, hexToRGBArr(hueSatToHex(153, 255)));
         await enqueue(() => sendViaCommand(CMD_CUSTOM_SET_VALUE, CHANNEL_CUSTOM, VID_PAD_COLOR, pc.hue, pc.sat));
         await enqueue(() => sendViaCommand(CMD_CUSTOM_SET_VALUE, CHANNEL_CUSTOM, VID_PAD_SPEED, 80));
       }
