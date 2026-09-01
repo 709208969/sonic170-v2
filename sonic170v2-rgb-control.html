@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LED Panel Pattern Designer — sonic170 (v47.75)</title>
+<title>LED Panel Pattern Designer — sonic170 (v47.79)</title>
 <style>
   /* ================================================================
      Glassmorphism Design System — "Frosted Glass + Dark Gradient"
@@ -1367,7 +1367,7 @@
     <div class="header-text">
       <h1 data-i18n="title">SONIC-170 v2灯光编辑器</h1>
       <div class="app-subtitle" data-i18n="subtitle">powered by kindlestar</div>
-      <div class="app-subtitle" id="appVersionBadge" style="font-size:.7rem;opacity:.75">v47.75</div>
+      <div class="app-subtitle" id="appVersionBadge" style="font-size:.7rem;opacity:.75">v47.79</div>
     </div>
     <div class="theme-toggle" role="group" aria-label="Theme">
       <button type="button" data-theme-btn="dawn" data-i18n="themeDawn" title="">
@@ -1800,8 +1800,8 @@
     </div>
     <p data-i18n="viaDlHint">For VIA users: download the definition file matching your board, then load it in VIA (Settings → Design - Load JSON).</p>
     <div class="via-dl-buttons">
-      <button id="dlFwBtn" data-i18n="dlFw">Download Firmware (4.9.5)</button>
-      <button id="dlFwSolderBtn" data-i18n="dlFwSolder">Download Solder Firmware (4.9.5)</button>
+      <button id="dlFwBtn" data-i18n="dlFw">Download Firmware (4.9.7)</button>
+      <button id="dlFwSolderBtn" data-i18n="dlFwSolder">Download Solder Firmware (4.9.7)</button>
     </div>
     <p id="dlFwHint" data-i18n="dlFwHint">Click <b class="fw-update-red">Check for Updates</b> above before downloading to get the latest firmware.</p>
     <div id="ghAssets" class="via-dl-buttons"></div>
@@ -3958,11 +3958,20 @@ function saveAnimToLibrary(item, pat) {
   renderAnimSlotSel();
 }
 
+// v47.76: 动画同步互斥——连接后台同步（connectKeyboard 内 20s withTimeout）与 animSyncBtn 手动同步
+// 可并发：各自读完动画后都 await animModal（同一 modal 元素，二次调用覆盖 handler → 前一个 Promise
+// 永久挂起 → syncKeyboardToPage 永不 settle → withTimeout 定时器无法清除 → 读取成功后仍误报
+// "读取键盘动画失败 (timeout)"）。互斥标志 + animModal 并发取消（见 animModal）双保险。
+let animSyncRunning = false;
 async function syncKeyboardToPage() {
+  if (animSyncRunning) return;  // 已在同步中（连接后台/手动）——忽略重复请求
+  animSyncRunning = true;
   try {
     await syncKeyboardToPageInner();
   } catch (e) {
     log(t('animSyncFail') + ': ' + e.message, true);
+  } finally {
+    animSyncRunning = false;
   }
 }
 
@@ -4386,25 +4395,87 @@ function bindDfuEvents() {
   // v47.42: 固件下载按钮（下载内嵌 4.8.2 bin）
   // v47.42: 焊接版固件下载（内嵌 4.8.2）
   document.getElementById('dlFwSolderBtn').addEventListener('click', () => window.applyDlOverride('dlFwSolderBtn', () => {
-    try {
-      const bin = atob(FW_DL_B64_SOLDER);
-      const arr = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-      const blob = new Blob([arr], { type: 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'SONIC170_solder_v4.9.7.bin';
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    // v47.78: 降级链 = 持久化固件 → 内嵌（仅显示版本=内嵌版本时）→ 版本不符提示。
+    // 显示版本永远对应实际下载内容，绝不静默降级到不同版本的固件
+    const st = loadStoredFw();
+    if (st && st.solder && downloadB64(st.solder, 'SONIC170_solder_v' + dlBtnVersion + '.bin')) {
       dfuStatusMsg(t('dfuDownloaded'));
-    } catch (e) { dfuStatusMsg(t('dfuFail') + ': ' + e.message); }
+      return;
+    }
+    if (dlBtnVersion === EMBED_FW_VERSION) {
+      try {
+        const bin = atob(FW_DL_B64_SOLDER);
+        const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        const blob = new Blob([arr], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'SONIC170_solder_v4.9.7.bin';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        dfuStatusMsg(t('dfuDownloaded'));
+      } catch (e) { dfuStatusMsg(t('dfuFail') + ': ' + e.message); }
+      return;
+    }
+    dfuStatusMsg(t('dlFwVersionMismatch') + ' v' + dlBtnVersion);
   }));
   // v47.23: 一键更新——三源并发探测(jsDelivr CDN / GitHub API / Gitee raw,谁快用谁)+ 后台预下载缓存
   // 仓库固定,无需输入;jsDelivr 为 GitHub 仓库文件 CDN(支持 CORS、国内可达),资产文件已在仓库根
   const REPO_GH = '709208969/sonic170-v2';
   const REPO_GITEE = 'kevinxu93/sonic170-v2';
   const EMBED_FW_VERSION = '4.9.7';
+  // v47.77: 下载按钮版本号实时化——初始显示内嵌固件版本（旧实现写死 4.9.5，与内嵌 4.9.7 不符）
+  // v47.78: 固件本体持久化——检查更新成功后最新 hotswap/solder bin（base64）连同版本号同存 localStorage；
+  // 刷新后按钮显示存储版本、点击直接从存储出 bin（离线秒出）。版本与 bin 同存同取 = 单一事实源，
+  // 任何路径（刷新/离线/清存储）下"显示版本"都等于"实际下载固件版本"，杜绝版本不符
+  const FW_STORE_KEY = 'sonic170_fw_store_v1';
+  const loadStoredFw = () => {
+    try {
+      const raw = localStorage.getItem(FW_STORE_KEY);
+      if (!raw) return null;
+      const j = JSON.parse(raw);
+      if (j && j.version && (j.hotswap || j.solder)) return j;
+    } catch (e) {}
+    return null;
+  };
+  // 仅当本次两个 bin 都成功时才写（缺一置空 → 下次启动该按钮回退内嵌，且版本显示随存储整体回退，仍一致）
+  const saveStoredFw = (ver, hot, sol) => {
+    if (!hot || !sol) return;
+    try { localStorage.setItem(FW_STORE_KEY, JSON.stringify({ version: ver, hotswap: hot, solder: sol })); }
+    catch (e) { /* 配额不足/隐私模式——静默，回退内嵌仍一致 */ }
+  };
+  const blobToB64 = (blob) => new Promise((res) => {
+    const fr = new FileReader();
+    fr.onload = () => res(String(fr.result).split(',')[1] || '');
+    fr.onerror = () => res('');
+    fr.readAsDataURL(blob);
+  });
+  const downloadB64 = (b64, name) => {
+    try {
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const blob = new Blob([arr], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      return true;
+    } catch (e) { return false; }
+  };
+  const storedFw = loadStoredFw();
+  // 持久化固件存在 → 显示其版本（与可下载内容强一致）；否则显示内嵌版本
+  dlBtnVersion = (storedFw && storedFw.version) ? storedFw.version : EMBED_FW_VERSION;
+  const updateDlBtnLabels = () => {
+    const hot = document.getElementById('dlFwBtn');
+    const sol = document.getElementById('dlFwSolderBtn');
+    if (hot) hot.textContent = dlBtnLabel('dlFw');
+    if (sol) sol.textContent = dlBtnLabel('dlFwSolder');
+  };
+  window.updateDlBtnLabels = updateDlBtnLabels; // 调试/扩展用
+  updateDlBtnLabels();
   // v47.60: 网页工具自更新——本页版本号（与 <title>/appVersionBadge 同步,单一来源取 title）
   const PAGE_VERSION = (document.title.match(/\(v([\d.]+)\)/) || [])[1] || '';
   const PAGE_HTML = 'sonic170v2-rgb-control.html';
@@ -4587,6 +4658,8 @@ function bindDfuEvents() {
       good.sort((a, b) => cmpV(b.value.tag, a.value.tag));
       const src = good[0].value;
       tag = src.tag; items = src.items;
+      // v47.77: 检查更新成功 → 下载按钮版本号实时刷新为最新 release 版本（用户可直接看到下载目标版本）
+      if (tag && cmpV(tag, dlBtnVersion) > 0) { dlBtnVersion = tag; updateDlBtnLabels(); }
       const want = /(sonic170|SONIC170).*(\.bin|\.json|\.zip)$|(\.bin|\.json|\.zip)$/i;
       items = items.filter(it => want.test(it.name));
       if (!items.length) { ghLog(selfNote + t('ghNoAssets')); return; }
@@ -4604,24 +4677,54 @@ function bindDfuEvents() {
       });
       ghLog(selfNote + verNote + (replaced ? t('ghReplaced') + ' ' + replaced + ' — ' : '') + t('ghPreloading'));
       await preloadAll(items, selfNote);
+      // v47.78: 固件本体持久化——预下载成功的两个 bin 转 base64 连同版本号写 localStorage
+      //（刷新后按钮显示存储版本、点击从存储秒出；两 bin 必须都成功才写，否则整体不写保持一致性）
+      // v47.79: 版本守卫——网络版本必须严格高于本地存储版本才覆盖；网络回退/缓存滞后时不覆盖，
+      // 保留本地新固件（否则刷新后本地 4.9.9 会被网络旧版 4.9.8 静默覆盖回退）
+      let hotB64 = '', solB64 = '';
+      for (const it of items) {
+        if (!/\.bin$/i.test(it.name)) continue;
+        const b = dlCache.get(it.url);
+        if (!b) continue;
+        const b64 = await blobToB64(b);
+        if (/solder/i.test(it.name)) solB64 = b64;
+        else hotB64 = b64;
+      }
+      const storedVer = (loadStoredFw() || {}).version || '';
+      if (hotB64 && solB64 && (!storedVer || cmpV(tag, storedVer) > 0)) {
+        saveStoredFw(tag, hotB64, solB64);
+      } else if (storedVer && cmpV(tag, storedVer) <= 0) {
+        // 网络版本不高于本地存储 → 保留本地（已在上方提示过"已是最新/新版本"信息）
+        ghLog((selfNote || '') + t('dlFwKeepLocal') + ' v' + storedVer + ' > ' + t('dlFwNet') + ' v' + tag);
+      }
     } catch (e) {
       ghLog(selfNote + t('ghFail') + ': ' + e.message + ' — ' + t('ghDirectNote'));
     }
   });
   document.getElementById('dlFwBtn').addEventListener('click', () => window.applyDlOverride('dlFwBtn', () => {
-    try {
-      const bin = atob(FW_DL_B64);
-      const arr = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-      const blob = new Blob([arr], { type: 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'SONIC170_hotswap_v4.9.7.bin';
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    // v47.78: 降级链 = 持久化固件 → 内嵌（仅显示版本=内嵌版本时）→ 版本不符提示
+    const st = loadStoredFw();
+    if (st && st.hotswap && downloadB64(st.hotswap, 'SONIC170_hotswap_v' + dlBtnVersion + '.bin')) {
       dfuStatusMsg(t('dfuDownloaded'));
-    } catch (e) { dfuStatusMsg(t('dfuFail') + ': ' + e.message); }
+      return;
+    }
+    if (dlBtnVersion === EMBED_FW_VERSION) {
+      try {
+        const bin = atob(FW_DL_B64);
+        const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        const blob = new Blob([arr], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'SONIC170_hotswap_v4.9.7.bin';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        dfuStatusMsg(t('dfuDownloaded'));
+      } catch (e) { dfuStatusMsg(t('dfuFail') + ': ' + e.message); }
+      return;
+    }
+    dfuStatusMsg(t('dlFwVersionMismatch') + ' v' + dlBtnVersion);
   }));
   document.getElementById('dfuOpenBtn').addEventListener('click', () => {
     document.getElementById('dfuModal').hidden = false;
@@ -5114,12 +5217,22 @@ function animSlotAutoAvoidOverwrite() {
 }
 
 // 弹窗确认（通用）：返回 Promise<boolean>
+// v47.76: 并发取消——同一 modal 二次调用时旧 handler 会被覆盖（旧 Promise 永久挂起,调用方
+// await 永不返回 → withTimeout 误报超时）。现先 resolve(false) 旧挂起调用（旧流程按"取消"退出,
+// 不会再打"读取键盘动画失败 (timeout)"），再绑定新 handler。
+let modalPending = {};  // modalId -> resolve 函数（最近一次挂起调用）
 function animModal(modalId, okId, cancelId, msgElId, msg) {
+  if (modalPending[modalId]) { modalPending[modalId](false); }
   return new Promise((resolve) => {
     const modal = document.getElementById(modalId);
     document.getElementById(msgElId).textContent = msg;
     modal.hidden = false;
-    const done = (v) => { modal.hidden = true; resolve(v); };
+    modalPending[modalId] = resolve;
+    const done = (v) => {
+      if (modalPending[modalId] === resolve) delete modalPending[modalId];
+      modal.hidden = true;
+      resolve(v);
+    };
     document.getElementById(okId).onclick = () => done(true);
     document.getElementById(cancelId).onclick = () => done(false);
     modal.onclick = (e) => { if (e.target === e.currentTarget) done(false); };
@@ -7323,7 +7436,9 @@ const I18N = {
     dfuFinal:'Finalizing...',
     dfuDone:'Flash complete — the keyboard restarted. Reconnect to continue.',
     dfuFail:'Flash failed',
-    dlFw:'Download Hotswap Firmware (4.9.2)', dlFwSolder:'Download Soldered Firmware (4.9.3)',
+    dlFw:'Download Hotswap Firmware (4.9.7)', dlFwSolder:'Download Soldered Firmware (4.9.7)',
+    dlFwVersionMismatch:'Embedded firmware version differs — click Check for Updates first, then retry:',
+    dlFwKeepLocal:'Keeping local firmware', dlFwNet:'network',   
     dfuDownloaded:'Firmware downloaded — flash it via the DFU dialog above.',
     ghCheck:'Check for Updates',
     ghBadRepo:'Enter a repository like owner/repo.',
@@ -7446,6 +7561,7 @@ const I18N = {
     animUpload:'Upload to Keyboard', animCancel:'Cancel',
     animSyncBtn:'Read Animations from Keyboard',
     animSyncManualStart:'Reading animations from keyboard…',
+    animSyncBusy:'Animation sync already in progress — skipped (try again after it finishes).',
     animNamePh:'Animation name (saved to library)',
     animSaveLib:'Save to Library', animLoadLib:'Load', animDelLib:'Delete',
     animImportPng:'Import PNG(s)', animImportGif:'Import GIF',
@@ -7558,7 +7674,9 @@ const I18N = {
     dfuFinal:'正在完成...',
     dfuDone:'烧录完成——键盘已重启。重新连接即可继续使用。',
     dfuFail:'烧录失败',
-    dlFw:'下载热插拔固件 (4.9.5)', dlFwSolder:'下载焊接固件 (4.9.5)',
+    dlFw:'下载热插拔固件 (4.9.7)', dlFwSolder:'下载焊接固件 (4.9.7)',
+    dlFwVersionMismatch:'内嵌固件与显示版本不符，请先点「检查更新」获取最新固件后再下载：',
+    dlFwKeepLocal:'网络版本不高于本地，保留本地固件', dlFwNet:'网络',
     dfuDownloaded:'固件已下载——可通过上方 DFU 弹窗烧录。',
     ghCheck:'检查更新',
     ghBadRepo:'请输入仓库名，格式 owner/repo。',
@@ -7724,6 +7842,7 @@ const I18N = {
     animUpload:'上传到键盘', animCancel:'取消',
     animSyncBtn:'从键盘读取动画',
     animSyncManualStart:'正在从键盘读取动画…',
+    animSyncBusy:'动画同步进行中，本次点击已跳过（完成后可再次点击）。',
     animNamePh:'动画名称（保存到本地库）',
     animSaveLib:'保存到库', animLoadLib:'加载', animDelLib:'删除',
     animImportPng:'导入 PNG', animImportGif:'导入 GIF',
@@ -7751,6 +7870,9 @@ const I18N = {
 };
 
 let currentLang = 'zh';
+// v47.77: 固件下载按钮实时版本号（初始=内嵌固件版本；检查更新成功后=最新 release 版本）
+// 语言切换会重置 data-i18n 元素文本，故 applyI18nToElement 对两个下载按钮走版本替换
+let dlBtnVersion = '';
 
 // Apply language on load
 function initialLang() {
@@ -7769,6 +7891,11 @@ function initialLang() {
 }
 
 function applyI18nToElement(el, key) {
+  if (el.id === 'dlFwBtn' || el.id === 'dlFwSolderBtn') {
+    // v47.77: 下载按钮版本号实时化——文本 = 字典 + 当前 dlBtnVersion（检查更新后已刷新）
+    el.textContent = dlBtnVersion ? t(key).replace(/(\d+\.\d+\.\d+)/, dlBtnVersion) : t(key);
+    return;
+  }
   if (el.dataset && el.dataset.i18nPh) {
     el.placeholder = t(el.dataset.i18nPh);
   }
@@ -7792,6 +7919,12 @@ function t(key) {
   // v47.70: 防御 I18N[currentLang] 缺失（切换异常/数据结构损坏时不抛错，降级英文表）
   const tbl = I18N[currentLang] || I18N['en'];
   return tbl[key] || I18N['en'][key] || key;
+}
+
+// v47.77: 下载按钮标签——字典文本 + 当前固件版本（dlBtnVersion 空时回退字典原文）
+function dlBtnLabel(key) {
+  const base = t(key);
+  return dlBtnVersion ? base.replace(/(\d+\.\d+\.\d+)/, dlBtnVersion) : base;
 }
 
 function switchLang(lang) {
@@ -8392,6 +8525,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // 读到 → 确认弹窗 → 缓存 + 入库 + 载入编辑器预览（复用 syncKeyboardToPage 全流程）
   document.getElementById('animSyncBtn').addEventListener('click', () => {
     if (!hidDevice || !hidDevice.opened) { log(t('notConnected'), true); return; }
+    if (animSyncRunning) { log(t('animSyncBusy'), true); return; }  // v47.76: 连接后台同步进行中——跳过防并发双弹窗
     log(t('animSyncManualStart'));
     syncKeyboardToPage();
   });
